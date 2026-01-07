@@ -285,12 +285,7 @@ function updatePriorityPreview() {
 }
 
 function deletePriority(id) {
-    window.showDeleteConfirmation({
-        title: 'Delete Priority',
-        message: 'Are you sure you want to delete this priority? This action cannot be undone.',
-        formAction: '/helpdesk/priorities/' + id,
-        method: 'DELETE'
-    });
+    window.showDeleteModal('/helpdesk/priorities/' + id);
 }
 
 function togglePriorityStatus(id) {

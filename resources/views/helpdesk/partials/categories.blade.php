@@ -257,12 +257,7 @@ function updatePreview() {
 }
 
 function deleteCategory(id) {
-    window.showDeleteConfirmation({
-        title: 'Delete Category',
-        message: 'Are you sure you want to delete this category? This action cannot be undone.',
-        formAction: '/helpdesk/categories/' + id,
-        method: 'DELETE'
-    });
+    window.showDeleteModal('/helpdesk/categories/' + id);
 }
 
 function toggleCategoryStatus(id) {

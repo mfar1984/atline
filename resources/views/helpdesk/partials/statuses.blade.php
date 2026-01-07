@@ -284,12 +284,7 @@ function updateStatusPreview() {
 }
 
 function deleteStatus(id) {
-    window.showDeleteConfirmation({
-        title: 'Delete Status',
-        message: 'Are you sure you want to delete this status? This action cannot be undone.',
-        formAction: '/helpdesk/statuses/' + id,
-        method: 'DELETE'
-    });
+    window.showDeleteModal('/helpdesk/statuses/' + id);
 }
 
 function toggleStatusActive(id) {

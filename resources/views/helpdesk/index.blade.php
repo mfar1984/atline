@@ -444,12 +444,7 @@ function closeCreateModal() {
 }
 
 function deleteTicket(id) {
-    window.showDeleteConfirmation({
-        title: 'Delete Ticket',
-        message: 'Are you sure you want to delete this ticket? This action cannot be undone.',
-        formAction: `/helpdesk/${id}`,
-        method: 'DELETE'
-    });
+    window.showDeleteModal(`/helpdesk/${id}`);
 }
 
 @if($client)
