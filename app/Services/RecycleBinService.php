@@ -149,12 +149,16 @@ class RecycleBinService
         }
 
         $itemName = $item->getRecycleBinName();
-        $itemId = $item->id;
 
         $result = $item->forceDelete();
 
         if ($result) {
-            ActivityLogService::logDelete($item, 'recycle_bin', "Permanently deleted {$type}: {$itemName}");
+            // Log after delete - use simple log since model is gone
+            try {
+                ActivityLogService::log('permanent_delete', "Permanently deleted {$type}: {$itemName}", 'recycle_bin');
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Activity logging failed: ' . $e->getMessage());
+            }
         }
 
         return $result;

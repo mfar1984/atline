@@ -269,13 +269,17 @@ class ExternalSettingsController extends Controller
                 ->with('error', 'Cannot delete organization. It has linked projects or tickets.');
         }
 
+        $orgName = $organization->name;
+        
+        // Delete first
+        $organization->delete();
+
+        // Log activity after successful delete (non-blocking)
         try {
-            ActivityLogService::logDelete($organization, 'external_settings', "Deleted organization {$organization->name}");
+            ActivityLogService::log('delete', "Deleted organization {$orgName}", 'external_settings');
         } catch (\Exception $e) {
             \Log::error('Activity logging failed: ' . $e->getMessage());
         }
-
-        $organization->delete();
 
         return redirect()->route('external.settings.index', ['tab' => 'organizations'])
             ->with('success', 'Organization deleted successfully.');
