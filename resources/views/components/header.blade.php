@@ -71,13 +71,19 @@
     <!-- Breadcrumb Bar -->
     <div class="breadcrumb-bar">
         <div class="breadcrumb-container">
-            <!-- Mobile Menu Button -->
+            <!-- Mobile/Tablet Menu Button - Hidden on desktop (lg and above) -->
             <button type="button" 
                     @click="$dispatch('toggle-mobile-menu')"
-                    class="flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-blue-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 md:hidden"
-                    style="min-width: 40px; min-height: 40px;">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    x-data="{ sidebarOpen: false }"
+                    @toggle-mobile-menu.window="sidebarOpen = !sidebarOpen"
+                    @close-mobile-menu.window="sidebarOpen = false"
+                    class="mobile-menu-btn hidden items-center justify-center p-2 rounded-md text-gray-700 hover:text-blue-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 active:bg-blue-50 transition-colors"
+                    style="min-width: 44px; min-height: 44px; -webkit-tap-highlight-color: transparent;">
+                <svg x-show="!sidebarOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+                <svg x-show="sidebarOpen" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
             </button>
 
@@ -86,3 +92,17 @@
         </div>
     </div>
 </header>
+
+<style>
+    /* Mobile menu button visibility - show on tablet and mobile */
+    @media (max-width: 1024px) {
+        .mobile-menu-btn {
+            display: flex !important;
+        }
+    }
+    @media (min-width: 1025px) {
+        .mobile-menu-btn {
+            display: none !important;
+        }
+    }
+</style>

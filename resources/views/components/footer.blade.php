@@ -17,6 +17,35 @@
     </div>
 </footer>
 
+<style>
+    /* Footer responsive styles for mobile/tablet */
+    @media (max-width: 480px) {
+        .footer .footer-content {
+            flex-direction: column !important;
+            gap: 0.5rem !important;
+            text-align: center !important;
+            padding: 0.75rem 0 !important;
+        }
+        .footer .footer-left,
+        .footer .footer-right {
+            width: 100%;
+            justify-content: center;
+        }
+        .footer .footer-links {
+            justify-content: center;
+        }
+    }
+    @media (min-width: 481px) and (max-width: 768px) {
+        .footer .footer-content {
+            flex-direction: row !important;
+            flex-wrap: wrap;
+            justify-content: center !important;
+            gap: 0.5rem 1rem !important;
+            padding: 0.75rem 0 !important;
+        }
+    }
+</style>
+
 <!-- Legal Modal -->
 <x-modals.legal-modal id="legal-modal" />
 

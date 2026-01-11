@@ -21,18 +21,18 @@
     $moreRadius = $hasMore && !$hasEdit && !$hasShow && !$hasRestore ? '9999px' : ($hasMore ? '0 9999px 9999px 0' : '0');
 @endphp
 
-<div class="inline-flex items-center bg-white border border-gray-300 rounded-full shadow-sm" style="border-radius: 9999px !important; padding: 1px;">
+<div class="action-buttons-wrapper inline-flex items-center bg-white border border-gray-300 rounded-full shadow-sm" style="border-radius: 9999px !important; padding: 1px;">
     <!-- Edit Button -->
     @if($editUrl)
     <a href="{{ $editUrl }}" 
-       class="inline-flex items-center justify-center text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors duration-150"
+       class="action-btn inline-flex items-center justify-center text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors duration-150"
        title="Edit"
        style="border-radius: {{ $editRadius }} !important; padding: 4px 6px;">
         <span class="material-symbols-outlined" style="font-size: 16px;">edit</span>
     </a>
     @elseif($editOnclick)
     <button type="button" onclick="{{ $editOnclick }}"
-       class="inline-flex items-center justify-center text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors duration-150"
+       class="action-btn inline-flex items-center justify-center text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors duration-150"
        title="Edit"
        style="border-radius: {{ $editRadius }} !important; padding: 4px 6px;">
         <span class="material-symbols-outlined" style="font-size: 16px;">edit</span>
@@ -41,20 +41,20 @@
 
     <!-- Divider between Edit and Show -->
     @if($hasEdit && $hasShow)
-    <div class="h-4 w-px bg-gray-300"></div>
+    <div class="action-divider h-4 w-px bg-gray-300"></div>
     @endif
 
     <!-- View Button -->
     @if($showUrl)
     <a href="{{ $showUrl }}" 
-       class="inline-flex items-center justify-center text-green-600 hover:text-green-700 hover:bg-green-50 transition-colors duration-150"
+       class="action-btn inline-flex items-center justify-center text-green-600 hover:text-green-700 hover:bg-green-50 transition-colors duration-150"
        title="View"
        style="border-radius: {{ $showRadius }} !important; padding: 4px 6px;">
         <span class="material-symbols-outlined" style="font-size: 16px;">open_in_new</span>
     </a>
     @elseif($showOnclick)
     <button type="button" onclick="{{ $showOnclick }}"
-       class="inline-flex items-center justify-center text-green-600 hover:text-green-700 hover:bg-green-50 transition-colors duration-150"
+       class="action-btn inline-flex items-center justify-center text-green-600 hover:text-green-700 hover:bg-green-50 transition-colors duration-150"
        title="View"
        style="border-radius: {{ $showRadius }} !important; padding: 4px 6px;">
         <span class="material-symbols-outlined" style="font-size: 16px;">open_in_new</span>
@@ -63,13 +63,13 @@
 
     <!-- Divider between Show and Restore -->
     @if($hasShow && $hasRestore)
-    <div class="h-4 w-px bg-gray-300"></div>
+    <div class="action-divider h-4 w-px bg-gray-300"></div>
     @endif
 
     <!-- Restore Button -->
     @if($restoreOnclick)
     <button type="button" onclick="{{ $restoreOnclick }}"
-       class="inline-flex items-center justify-center text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors duration-150"
+       class="action-btn inline-flex items-center justify-center text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors duration-150"
        title="Restore"
        style="border-radius: {{ $restoreRadius }} !important; padding: 4px 6px;">
         <span class="material-symbols-outlined" style="font-size: 16px;">restore</span>
@@ -78,14 +78,14 @@
 
     <!-- Divider before More Actions -->
     @if(($hasEdit || $hasShow || $hasRestore) && $hasMore)
-    <div class="h-4 w-px bg-gray-300"></div>
+    <div class="action-divider h-4 w-px bg-gray-300"></div>
     @endif
 
     <!-- More Actions Dropdown -->
     @if($hasMore)
     <div class="dropdown-container" style="position: relative; display: inline-block;">
         <button type="button" 
-                class="inline-flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors duration-150 dropdown-trigger"
+                class="action-btn inline-flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors duration-150 dropdown-trigger"
                 title="More actions"
                 style="border-radius: {{ $moreRadius }} !important; padding: 4px 6px;">
             <span class="material-symbols-outlined" style="font-size: 16px;">more_vert</span>
@@ -137,3 +137,35 @@
     </div>
     @endif
 </div>
+
+<style>
+    /* Action buttons responsive styles */
+    @media (max-width: 640px) {
+        .action-buttons-wrapper {
+            transform: scale(0.9);
+            transform-origin: center;
+        }
+        .action-btn {
+            padding: 6px 8px !important;
+            min-width: 32px;
+            min-height: 32px;
+        }
+        .action-btn .material-symbols-outlined {
+            font-size: 18px !important;
+        }
+        .dropdown-menu {
+            min-width: 120px !important;
+        }
+        .dropdown-menu button,
+        .dropdown-menu a {
+            padding: 10px 12px !important;
+            font-size: 12px !important;
+        }
+    }
+    
+    @media (min-width: 641px) and (max-width: 1024px) {
+        .action-btn {
+            padding: 5px 7px !important;
+        }
+    }
+</style>

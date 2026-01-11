@@ -135,7 +135,14 @@ class ActivityLogService
 
         try {
             $userName = $user?->name ?? 'System';
-            $userRole = $user?->role?->name ?? '';
+            $userRole = '';
+            
+            // Safely get user role
+            try {
+                $userRole = $user?->role?->name ?? '';
+            } catch (\Exception $e) {
+                $userRole = '';
+            }
 
             // Determine user type for role display
             if (!$userRole && $user) {
@@ -153,12 +160,16 @@ class ActivityLogService
                 'user_name' => $userName,
                 'user_role' => $userRole,
                 'ip_address' => $activityLog->ip_address ?? 'Unknown',
-                'timestamp' => $activityLog->created_at->format('d M Y, H:i:s'),
+                'timestamp' => $activityLog->created_at ? $activityLog->created_at->format('d M Y, H:i:s') : now()->format('d M Y, H:i:s'),
             ];
 
-            // Run synchronously - no queue needed for shared hosting
-            $job = new SendTelegramNotificationJob($data);
-            $job->handle();
+            // Run synchronously - wrapped in try-catch
+            try {
+                $job = new SendTelegramNotificationJob($data);
+                $job->handle();
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('Telegram job failed', ['error' => $e->getMessage()]);
+            }
         } catch (\Exception $e) {
             // Silent fail - don't interrupt main operation
             \Illuminate\Support\Facades\Log::warning('Failed to dispatch Telegram notification', [

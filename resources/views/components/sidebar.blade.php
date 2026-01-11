@@ -57,8 +57,24 @@
 
 <div class="sidebar sidebar-expanded" 
      x-data="{ collapsed: false, openMenus: {} }"
-     :class="{ 'sidebar-collapsed': collapsed, 'sidebar-expanded': !collapsed, 'sidebar-mobile-open': $store.mobileMenu?.open }"
-     @toggle-sidebar.window="collapsed = !collapsed">
+     :class="{ 
+         'sidebar-collapsed': collapsed, 
+         'sidebar-expanded': !collapsed, 
+         'sidebar-mobile-open': $store.mobileMenu?.open 
+     }"
+     @toggle-sidebar.window="collapsed = !collapsed"
+     @toggle-mobile-menu.window="$el.classList.toggle('sidebar-mobile-open')"
+     @close-mobile-menu.window="$el.classList.remove('sidebar-mobile-open')">
+
+    <!-- Close button for mobile/tablet -->
+    <button type="button"
+            @click="$dispatch('close-mobile-menu')"
+            class="sidebar-close-btn absolute top-4 right-4 p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none lg:hidden"
+            style="z-index: 10; -webkit-tap-highlight-color: transparent;">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+    </button>
 
     <!-- Sidebar Header -->
     <div class="sidebar-header" style="position: relative;">

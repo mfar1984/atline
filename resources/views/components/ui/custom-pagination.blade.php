@@ -26,10 +26,10 @@
 @endphp
 
 @if($isPaginator && $total >= 0)
-<div class="flex items-center justify-between">
+<div class="pagination-wrapper flex items-center justify-between flex-wrap gap-3">
     <!-- Showing X to Y text -->
-    <p class="text-xs text-gray-400" style="font-family: Poppins, sans-serif;">
-        Showing {{ $firstItem }} to {{ $lastItem }} of {{ $total }} {{ $recordLabel }}
+    <p class="pagination-info text-xs text-gray-400" style="font-family: Poppins, sans-serif;">
+        Showing <span class="font-medium">{{ $firstItem }}</span> to <span class="font-medium">{{ $lastItem }}</span> of <span class="font-medium">{{ $total }}</span> {{ $recordLabel }}
     </p>
     
     <!-- Custom Pagination -->
@@ -72,17 +72,17 @@
             }
         }
     @endphp
-    <nav class="flex items-center gap-1" style="font-family: Poppins, sans-serif;">
+    <nav class="pagination-nav flex items-center gap-1" style="font-family: Poppins, sans-serif;">
         <!-- First Page << -->
         <a href="{{ $currentPage == 1 ? '#' : $buildUrl(1) }}" 
-           class="flex items-center justify-center w-8 h-8 text-xs rounded {{ $currentPage == 1 ? 'text-gray-300 cursor-not-allowed pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
+           class="pagination-btn flex items-center justify-center w-8 h-8 text-xs rounded {{ $currentPage == 1 ? 'text-gray-300 cursor-not-allowed pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
            @if($currentPage == 1) aria-disabled="true" @endif>
             &laquo;
         </a>
         
         <!-- Previous Page < -->
         <a href="{{ $currentPage == 1 ? '#' : $buildUrl($currentPage - 1) }}" 
-           class="flex items-center justify-center w-8 h-8 text-xs rounded {{ $currentPage == 1 ? 'text-gray-300 cursor-not-allowed pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
+           class="pagination-btn flex items-center justify-center w-8 h-8 text-xs rounded {{ $currentPage == 1 ? 'text-gray-300 cursor-not-allowed pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
            @if($currentPage == 1) aria-disabled="true" @endif>
             &lsaquo;
         </a>
@@ -90,10 +90,10 @@
         <!-- Page Numbers -->
         @foreach($pages as $page)
             @if($page === '...')
-                <span class="flex items-center justify-center w-8 h-8 text-xs text-gray-400">..</span>
+                <span class="pagination-ellipsis flex items-center justify-center w-8 h-8 text-xs text-gray-400">..</span>
             @else
                 <a href="{{ $buildUrl($page) }}" 
-                   class="flex items-center justify-center w-8 h-8 text-xs rounded-full {{ $page == $currentPage ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                   class="pagination-btn pagination-num flex items-center justify-center w-8 h-8 text-xs rounded-full {{ $page == $currentPage ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                     {{ $page }}
                 </a>
             @endif
@@ -101,18 +101,63 @@
         
         <!-- Next Page > -->
         <a href="{{ $currentPage == $lastPage ? '#' : $buildUrl($currentPage + 1) }}" 
-           class="flex items-center justify-center w-8 h-8 text-xs rounded {{ $currentPage == $lastPage ? 'text-gray-300 cursor-not-allowed pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
+           class="pagination-btn flex items-center justify-center w-8 h-8 text-xs rounded {{ $currentPage == $lastPage ? 'text-gray-300 cursor-not-allowed pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
            @if($currentPage == $lastPage) aria-disabled="true" @endif>
             &rsaquo;
         </a>
         
         <!-- Last Page >> -->
         <a href="{{ $currentPage == $lastPage ? '#' : $buildUrl($lastPage) }}" 
-           class="flex items-center justify-center w-8 h-8 text-xs rounded {{ $currentPage == $lastPage ? 'text-gray-300 cursor-not-allowed pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
+           class="pagination-btn flex items-center justify-center w-8 h-8 text-xs rounded {{ $currentPage == $lastPage ? 'text-gray-300 cursor-not-allowed pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
            @if($currentPage == $lastPage) aria-disabled="true" @endif>
             &raquo;
         </a>
     </nav>
     @endif
 </div>
+
+<style>
+    /* Pagination responsive styles */
+    @media (max-width: 640px) {
+        .pagination-wrapper {
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 12px !important;
+        }
+        .pagination-info {
+            text-align: center !important;
+            font-size: 11px !important;
+        }
+        .pagination-nav {
+            flex-wrap: wrap !important;
+            justify-content: center !important;
+        }
+        .pagination-btn {
+            width: 32px !important;
+            height: 32px !important;
+            font-size: 11px !important;
+        }
+        /* Hide ellipsis on very small screens */
+        .pagination-ellipsis {
+            width: 20px !important;
+        }
+    }
+    
+    @media (max-width: 400px) {
+        /* Show only current page and nav buttons on very small screens */
+        .pagination-num:not(.bg-blue-600) {
+            display: none !important;
+        }
+        .pagination-ellipsis {
+            display: none !important;
+        }
+    }
+    
+    @media (min-width: 641px) and (max-width: 1024px) {
+        .pagination-btn {
+            width: 36px !important;
+            height: 36px !important;
+        }
+    }
+</style>
 @endif
