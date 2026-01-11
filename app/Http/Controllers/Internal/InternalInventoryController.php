@@ -16,9 +16,50 @@ class InternalInventoryController extends Controller
 {
     public function index(Request $request)
     {
-        $activeTab = $request->get('tab', 'assets');
+        $user = auth()->user();
         $search = $request->get('search');
         $status = $request->get('status');
+        
+        // Define tabs with their permissions in order
+        $tabPermissions = [
+            'assets' => 'internal_inventory_assets.view',
+            'movements' => 'internal_inventory_movements.view',
+            'checkout' => 'internal_inventory_checkout.view',
+            'locations' => 'internal_inventory_locations.view',
+            'brands' => 'internal_inventory_brands.view',
+            'categories' => 'internal_inventory_categories.view',
+        ];
+
+        // Get requested tab or find first accessible tab
+        $requestedTab = $request->get('tab');
+        $activeTab = null;
+
+        if ($requestedTab && isset($tabPermissions[$requestedTab])) {
+            // Check if user has permission for requested tab
+            if ($user->hasPermission($tabPermissions[$requestedTab])) {
+                $activeTab = $requestedTab;
+            }
+        }
+
+        // If no valid tab yet, find first accessible tab
+        if (!$activeTab) {
+            foreach ($tabPermissions as $tab => $permission) {
+                if ($user->hasPermission($permission)) {
+                    $activeTab = $tab;
+                    break;
+                }
+            }
+        }
+
+        // If user has no permission for any tab, deny access
+        if (!$activeTab) {
+            abort(403, 'You do not have permission to access any inventory tabs.');
+        }
+
+        // If requested tab differs from active tab (no permission), redirect
+        if ($requestedTab && $requestedTab !== $activeTab) {
+            return redirect()->route('internal.inventory.index', ['tab' => $activeTab]);
+        }
         
         $data = [
             'activeTab' => $activeTab,
@@ -267,6 +308,19 @@ class InternalInventoryController extends Controller
 
     public function checkin(Request $request, AssetMovement $movement)
     {
+        // Check if current user's employee is the one who checked out the asset
+        $currentEmployee = Employee::where('user_id', auth()->id())->first();
+        
+        if (!$currentEmployee) {
+            return redirect()->route('internal.inventory.index', ['tab' => 'checkout'])
+                ->with('error', 'Your account is not linked to an employee profile.');
+        }
+        
+        if ($movement->employee_id !== $currentEmployee->id) {
+            return redirect()->route('internal.inventory.index', ['tab' => 'checkout'])
+                ->with('error', 'You can only check in assets that you have checked out.');
+        }
+        
         $validated = $request->validate([
             'return_condition' => 'required|in:excellent,good,fair,poor',
             'notes' => 'nullable|string',
@@ -293,6 +347,13 @@ class InternalInventoryController extends Controller
 
         return redirect()->route('internal.inventory.index', ['tab' => 'checkout'])
             ->with('success', 'Asset checked in successfully.');
+    }
+
+    public function printMovement(AssetMovement $movement)
+    {
+        $movement->load(['asset.category', 'asset.brand', 'asset.location', 'employee', 'approver']);
+        
+        return view('internal.inventory.print-movement', compact('movement'));
     }
 
     // Location CRUD

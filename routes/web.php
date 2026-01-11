@@ -10,6 +10,9 @@ use App\Http\Controllers\External\ExternalSettingsController;
 use App\Http\Controllers\External\ReportController;
 use App\Http\Controllers\AttachmentController;
 
+// Webhook receiver endpoint (public, no auth required)
+Route::post('/webhook/receive', [\App\Http\Controllers\Settings\IntegrationController::class, 'receiveWebhook'])->name('webhook.receive');
+
 // Guest routes with rate limiting protection
 Route::middleware('guest')->group(function () {
     // Login page - rate limited (10 req/min per IP)
@@ -78,6 +81,7 @@ Route::middleware('auth')->group(function () {
         // Checkout/Checkin
         Route::post('/inventory/checkout', [\App\Http\Controllers\Internal\InternalInventoryController::class, 'checkout'])->name('inventory.checkout');
         Route::post('/inventory/checkin/{movement}', [\App\Http\Controllers\Internal\InternalInventoryController::class, 'checkin'])->name('inventory.checkin');
+        Route::get('/inventory/movement/{movement}/print', [\App\Http\Controllers\Internal\InternalInventoryController::class, 'printMovement'])->name('inventory.movement.print');
         
         // Locations
         Route::post('/inventory/locations', [\App\Http\Controllers\Internal\InternalInventoryController::class, 'storeLocation'])->name('inventory.locations.store');
@@ -121,6 +125,11 @@ Route::middleware('auth')->group(function () {
         
         // Settings
         Route::get('settings', [ExternalSettingsController::class, 'index'])->name('settings.index');
+        
+        // Organizations
+        Route::post('settings/organizations', [ExternalSettingsController::class, 'storeOrganization'])->name('settings.organizations.store');
+        Route::put('settings/organizations/{organization}', [ExternalSettingsController::class, 'updateOrganization'])->name('settings.organizations.update');
+        Route::delete('settings/organizations/{organization}', [ExternalSettingsController::class, 'destroyOrganization'])->name('settings.organizations.destroy');
         
         // Clients
         Route::post('settings/clients', [ExternalSettingsController::class, 'storeClient'])->name('settings.clients.store');
@@ -198,6 +207,7 @@ Route::middleware('auth')->group(function () {
         // Configuration
         Route::get('/configuration', [\App\Http\Controllers\Settings\ConfigurationController::class, 'index'])->name('configuration.index');
         Route::post('/configuration', [\App\Http\Controllers\Settings\ConfigurationController::class, 'update'])->name('configuration.update');
+        Route::post('/configuration/branding', [\App\Http\Controllers\Settings\ConfigurationController::class, 'updateBranding'])->name('configuration.update-branding');
         
         // Roles
         Route::resource('roles', \App\Http\Controllers\Settings\RoleController::class);
@@ -209,6 +219,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/integrations', [\App\Http\Controllers\Settings\IntegrationController::class, 'index'])->name('integrations.index');
         Route::post('/integrations/email', [\App\Http\Controllers\Settings\IntegrationController::class, 'updateEmail'])->name('integrations.email.update');
         Route::post('/integrations/email/test', [\App\Http\Controllers\Settings\IntegrationController::class, 'testEmail'])->name('integrations.email.test');
+        Route::post('/integrations/telegram', [\App\Http\Controllers\Settings\IntegrationController::class, 'updateTelegram'])->name('integrations.telegram.update');
+        Route::post('/integrations/telegram/test', [\App\Http\Controllers\Settings\IntegrationController::class, 'testTelegram'])->name('integrations.telegram.test');
         Route::post('/integrations/payment', [\App\Http\Controllers\Settings\IntegrationController::class, 'updatePayment'])->name('integrations.payment.update');
         Route::post('/integrations/payment/test', [\App\Http\Controllers\Settings\IntegrationController::class, 'testPayment'])->name('integrations.payment.test');
         Route::post('/integrations/storage', [\App\Http\Controllers\Settings\IntegrationController::class, 'updateStorage'])->name('integrations.storage.update');
@@ -225,5 +237,6 @@ Route::middleware('auth')->group(function () {
         
         Route::get('/activity-logs', [\App\Http\Controllers\Settings\ActivityLogController::class, 'index'])->name('activity-logs.index');
         Route::delete('/activity-logs', [\App\Http\Controllers\Settings\ActivityLogController::class, 'delete'])->name('activity-logs.delete');
+        Route::post('/activity-logs/print', [\App\Http\Controllers\Settings\ActivityLogController::class, 'logPrint'])->name('activity-logs.print');
     });
 });

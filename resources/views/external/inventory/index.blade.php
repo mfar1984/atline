@@ -31,10 +31,10 @@
                        class="w-full px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500"
                        style="font-family: Poppins, sans-serif; min-height: 32px;">
             </div>
-            <select name="project_id" class="px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500 min-w-[140px]" style="font-family: Poppins, sans-serif; min-height: 32px;">
+            <select name="project_id" class="px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500" style="font-family: Poppins, sans-serif; min-height: 32px; max-width: 200px;">
                 <option value="">All Projects</option>
                 @foreach($projects as $project)
-                    <option value="{{ $project->id }}" {{ request('project_id') == $project->id ? 'selected' : '' }}>{{ $project->name }}</option>
+                    <option value="{{ $project->id }}" {{ request('project_id') == $project->id ? 'selected' : '' }}>{{ Str::limit($project->name, 30) }}</option>
                 @endforeach
             </select>
             <select name="category_id" class="px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500 min-w-[120px]" style="font-family: Poppins, sans-serif; min-height: 32px;">
@@ -101,8 +101,8 @@
                     <div class="text-xs text-gray-500">S/N: {{ $asset->serial_number }}</div>
                     @endif
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="text-xs text-gray-900">{{ $asset->project->name ?? '-' }}</span>
+                <td class="px-6 py-4" style="max-width: 200px;">
+                    <span class="text-xs text-gray-900 block truncate" title="{{ $asset->project->name ?? '-' }}">{{ Str::limit($asset->project->name ?? '-', 35) }}</span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">

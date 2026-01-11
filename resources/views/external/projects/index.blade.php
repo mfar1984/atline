@@ -69,40 +69,27 @@
             :headers="[
                 ['label' => 'Project Name', 'align' => 'text-left'],
                 ['label' => 'Client', 'align' => 'text-left'],
-                ['label' => ($isClient ?? false) ? 'PO/Invoice' : 'Value (RM)', 'align' => 'text-right'],
                 ['label' => 'Assets', 'align' => 'text-center'],
-                ['label' => 'Status', 'align' => 'text-center']
+                ['label' => 'Status', 'align' => 'text-center'],
+                ['label' => 'Actions', 'align' => 'text-center']
             ]"
+            :actions="false"
             empty-message="No projects found."
         >
             @forelse($projects as $project)
             <tr class="hover:bg-gray-50">
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-medium text-gray-900" style="font-family: Poppins, sans-serif; font-size: 12px;">
-                        {{ $project->name }}
-                    </div>
-                    @if($project->start_date || $project->end_date)
-                    <div class="text-xs text-gray-500">
-                        @formatDate($project->start_date) - @formatDate($project->end_date)
-                    </div>
-                    @endif
+                <td class="px-4 py-3" style="max-width: 300px;">
+                    <div class="text-xs font-medium text-gray-900 truncate" title="{{ $project->name }}">{{ Str::limit($project->name, 50) }}</div>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="text-xs text-gray-500">{{ $project->client_name ?? '-' }}</span>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <span class="text-xs text-gray-500">{{ $project->client->name ?? '-' }}</span>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-right">
-                    @if($isClient ?? false)
-                        <span class="text-xs font-medium text-gray-900">{{ $project->po_number ?? '-' }}</span>
-                    @else
-                        <span class="text-xs font-medium text-gray-900">{{ $project->project_value ? number_format($project->project_value, 2) : '-' }}</span>
-                    @endif
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-center">
-                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                <td class="px-4 py-3 whitespace-nowrap text-center">
+                    <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                         {{ $project->assets_count ?? 0 }}
                     </span>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-center">
+                <td class="px-4 py-3 whitespace-nowrap text-center">
                     @php
                         $statusColors = [
                             'active' => 'bg-green-100 text-green-800',
@@ -110,11 +97,11 @@
                             'on_hold' => 'bg-yellow-100 text-yellow-800',
                         ];
                     @endphp
-                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $statusColors[$project->status] ?? 'bg-gray-100 text-gray-800' }}">
+                    <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ $statusColors[$project->status] ?? 'bg-gray-100 text-gray-800' }}">
                         {{ ucfirst(str_replace('_', ' ', $project->status)) }}
                     </span>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                <td class="px-4 py-3 whitespace-nowrap text-center">
                     <x-ui.action-buttons
                         :edit-url="auth()->user()->hasPermission('external_projects.update') ? route('external.projects.edit', $project) : null"
                         :show-url="route('external.projects.show', $project)"

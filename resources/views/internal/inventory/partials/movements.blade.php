@@ -36,7 +36,8 @@
         ['label' => 'Employee', 'align' => 'text-left'],
         ['label' => 'Checkout / Return', 'align' => 'text-left'],
         ['label' => 'Purpose', 'align' => 'text-left'],
-        ['label' => 'Status', 'align' => 'text-center']
+        ['label' => 'Status', 'align' => 'text-center'],
+        ['label' => 'Action', 'align' => 'text-center']
     ]"
     :actions="false"
     empty-message="No movement history found."
@@ -51,15 +52,15 @@
             <div class="text-xs text-gray-500">{{ $movement->asset->name ?? '-' }}</div>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
-            <span class="text-xs text-gray-900">{{ $movement->employee->full_name ?? '-' }}</span>
+            <span class="text-xs text-gray-900" title="{{ $movement->employee->full_name ?? '-' }}">{{ Str::limit($movement->employee->full_name ?? '-', 20) }}</span>
         </td>
         <td class="px-6 py-4 whitespace-nowrap">
-            <div class="text-xs text-gray-600">Out: {{ $movement->checkout_date->format('d/m/Y') }}</div>
+            <div class="text-xs text-gray-600">Out: {{ $movement->checkout_date->format('d/m/Y H:i') }}</div>
             <div class="text-xs {{ $isOverdue ? 'text-red-600 font-semibold' : 'text-gray-500' }}">
                 Due: {{ $movement->expected_return_date->format('d/m/Y') }}
             </div>
             @if($movement->actual_return_date)
-                <div class="text-xs text-green-600">In: {{ $movement->actual_return_date->format('d/m/Y') }}</div>
+                <div class="text-xs text-green-600">In: {{ $movement->actual_return_date->format('d/m/Y H:i') }}</div>
             @endif
         </td>
         <td class="px-6 py-4">
@@ -77,6 +78,13 @@
             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $statusColors[$movement->status] ?? 'bg-gray-100 text-gray-800' }}">
                 {{ $statusLabel }}
             </span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-center">
+            <a href="{{ route('internal.inventory.movement.print', $movement) }}" target="_blank"
+               class="inline-flex items-center gap-1 px-2 py-1 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 transition">
+                <span class="material-symbols-outlined" style="font-size: 12px;">print</span>
+                PRINT
+            </a>
         </td>
     </tr>
     @empty

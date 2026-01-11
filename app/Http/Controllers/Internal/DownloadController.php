@@ -80,6 +80,17 @@ class DownloadController extends Controller
         // Use queue for background processing
         \App\Jobs\UploadToR2Job::dispatch($downloadId, $tempPath);
 
+        // Log upload activity
+        try {
+            ActivityLogService::logUpload('internal_downloads', "Uploaded file {$download->name}", [
+                'file_name' => $download->original_filename,
+                'file_type' => $download->file_type,
+                'file_size' => $download->file_size,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Activity logging failed: ' . $e->getMessage());
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'File queued for upload',
@@ -274,6 +285,13 @@ class DownloadController extends Controller
                     // Continue with deletion from database
                 }
             }
+        }
+
+        // Log delete activity
+        try {
+            ActivityLogService::logDelete($download, 'internal_downloads', "Deleted file {$download->name}");
+        } catch (\Exception $e) {
+            \Log::error('Activity logging failed: ' . $e->getMessage());
         }
 
         $download->delete();

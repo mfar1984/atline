@@ -32,6 +32,7 @@ class IntegrationSetting extends Model
     public const TYPE_STORAGE = 'storage';
     public const TYPE_WEATHER = 'weather';
     public const TYPE_WEBHOOK = 'webhook';
+    public const TYPE_TELEGRAM = 'telegram';
 
     // Provider constants
     public const PROVIDER_SMTP = 'smtp';

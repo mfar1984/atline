@@ -9,30 +9,31 @@ use App\Models\Client;
 use App\Models\Category;
 use App\Models\Brand;
 use App\Models\Location;
+use App\Models\Organization;
 use App\Models\Vendor;
-use App\Traits\ClientIsolation;
+use App\Traits\ProjectAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
-    use ClientIsolation;
+    use ProjectAccess;
 
     public function index()
     {
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         $isClient = !$isStaff;
         
-        // Build queries with client isolation
+        // Get accessible project IDs
+        $projectIds = $this->getAccessibleProjectIds();
+        
+        // Build queries with project access filter
         $projectQuery = Project::query();
         $assetQuery = Asset::query();
         
-        if ($client) {
-            $projectQuery->where('client_id', $client->id);
-            $assetQuery->whereHas('project', function($q) use ($client) {
-                $q->where('client_id', $client->id);
-            });
+        if ($projectIds !== null) {
+            $projectQuery->whereIn('id', $projectIds);
+            $assetQuery->whereIn('project_id', $projectIds);
         }
 
         // Summary Statistics
@@ -42,7 +43,8 @@ class ReportController extends Controller
             'completed_projects' => (clone $projectQuery)->where('status', 'completed')->count(),
             'total_assets' => (clone $assetQuery)->count(),
             'total_value' => (clone $projectQuery)->sum('project_value'),
-            'total_clients' => $client ? 1 : Client::count(),
+            'total_organizations' => $isStaff ? Organization::count() : 
+                (clone $projectQuery)->distinct('organization_id')->count('organization_id'),
         ];
 
         // Projects by Status (Pie Chart)
@@ -83,21 +85,30 @@ class ReportController extends Controller
                 ];
             });
 
-        // Project Value by Client (Horizontal Bar) - only for staff
-        if ($client) {
-            $projectValueByClient = collect([[
-                'name' => $client->name,
-                'value' => (float) (clone $projectQuery)->sum('project_value'),
-            ]]);
-        } else {
-            $projectValueByClient = Project::select('client_id', DB::raw('SUM(project_value) as total_value'))
-                ->groupBy('client_id')
-                ->with('client')
+        // Project Value by Organization (Horizontal Bar)
+        if ($isStaff) {
+            $projectValueByClient = Project::select('organization_id', DB::raw('SUM(project_value) as total_value'))
+                ->groupBy('organization_id')
+                ->with('organization')
                 ->orderByDesc('total_value')
                 ->get()
                 ->map(function ($item) {
                     return [
-                        'name' => $item->client?->name ?? 'Unknown',
+                        'name' => $item->organization?->name ?? 'Unknown',
+                        'value' => (float) $item->total_value,
+                    ];
+                });
+        } else {
+            // Client user - show only their accessible projects grouped by organization
+            $projectValueByClient = (clone $projectQuery)
+                ->select('organization_id', DB::raw('SUM(project_value) as total_value'))
+                ->groupBy('organization_id')
+                ->with('organization')
+                ->orderByDesc('total_value')
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'name' => $item->organization?->name ?? 'Unknown',
                         'value' => (float) $item->total_value,
                     ];
                 });
@@ -174,7 +185,7 @@ class ReportController extends Controller
 
         // Top Projects by Value
         $topProjects = (clone $projectQuery)
-            ->with('client')
+            ->with('organization')
             ->orderByDesc('project_value')
             ->limit(5)
             ->get();
@@ -185,6 +196,9 @@ class ReportController extends Controller
             ->orderByDesc('created_at')
             ->limit(5)
             ->get();
+
+        // For backward compatibility
+        $client = $this->getClientForUser();
 
         return view('external.reports.index', compact(
             'stats',

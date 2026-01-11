@@ -25,7 +25,7 @@
                 ['label' => 'Inventory', 'route' => 'external.inventory.index', 'active' => 'external.inventory*', 'module' => 'external_inventory'],
                 ['label' => 'Reports', 'route' => 'external.reports.index', 'active' => 'external.reports*', 'module' => 'external_reports'],
                 ['label' => 'Attachments', 'route' => 'external.attachments.index', 'active' => 'external.attachments*', 'module' => 'external_attachments'],
-                ['label' => 'Settings', 'route' => 'external.settings.index', 'active' => 'external.settings*', 'module' => 'external_settings_client']
+                ['label' => 'Settings', 'route' => 'external.settings.index', 'active' => 'external.settings*', 'module' => 'external_settings']
             ]
         ],
         [
@@ -63,14 +63,13 @@
     <!-- Sidebar Header -->
     <div class="sidebar-header" style="position: relative;">
         <div class="flex items-center justify-center relative">
-            <div x-show="!collapsed" class="flex items-center space-x-3">
-                <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                    <span class="material-symbols-outlined text-white" style="font-size: 24px;">deployed_code</span>
+            <div x-show="!collapsed" class="flex items-center justify-center">
+                <div class="h-10 rounded-lg flex items-center justify-center overflow-hidden">
+                    <img src="{{ \App\Models\SystemSetting::logoPath() }}" alt="Logo" class="h-full object-contain" onerror="this.style.display='none'; this.parentElement.classList.add('bg-blue-600', 'w-10'); this.parentElement.innerHTML='<span class=\'material-symbols-outlined text-white\' style=\'font-size: 24px;\'>deployed_code</span>';">
                 </div>
-                <span class="text-lg font-bold text-gray-800">ATLINE</span>
             </div>
-            <div x-show="collapsed" class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span class="material-symbols-outlined text-white" style="font-size: 24px;">deployed_code</span>
+            <div x-show="collapsed" class="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden">
+                <img src="{{ \App\Models\SystemSetting::iconPath() }}" alt="Icon" class="w-full h-full object-contain" onerror="this.style.display='none'; this.parentElement.classList.add('bg-blue-600'); this.parentElement.innerHTML='<span class=\'material-symbols-outlined text-white\' style=\'font-size: 24px;\'>deployed_code</span>';">
             </div>
             <button @click="collapsed = !collapsed; $dispatch('sidebar-toggled', { collapsed: collapsed })"
                     class="sidebar-toggle absolute right-0 top-1/2 -translate-y-1/2" x-show="!collapsed" type="button">

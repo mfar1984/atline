@@ -36,6 +36,109 @@
     </div>
     @endif
 
+    <!-- Branding Form (separate for file uploads) -->
+    <form id="branding-form" action="{{ route('settings.configuration.update-branding') }}" method="POST" enctype="multipart/form-data">
+        @csrf
+        <div class="p-6 pb-0">
+            <!-- Branding Settings -->
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+                <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-gray-500" style="font-size: 18px;">palette</span>
+                    <h3 class="text-xs font-semibold text-gray-900" style="font-family: Poppins, sans-serif;">Branding</h3>
+                </div>
+                <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Icon/Favicon -->
+                        <div>
+                            <label class="block text-gray-700 mb-2" style="font-size: 11px;">
+                                <span class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined" style="font-size: 14px;">tab</span>
+                                    Favicon / Icon
+                                </span>
+                            </label>
+                            <div class="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                <div class="flex items-center justify-center mb-3">
+                                    <div class="w-16 h-16 border border-gray-300 rounded bg-white flex items-center justify-center overflow-hidden">
+                                        <img src="{{ \App\Models\SystemSetting::iconPath() }}" alt="Current Icon" class="max-w-full max-h-full object-contain" id="icon-preview" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <span class="material-symbols-outlined text-gray-300" style="font-size: 32px; display: none;">image</span>
+                                    </div>
+                                </div>
+                                @if($canUpdate)
+                                <input type="file" name="icon" id="icon-input" accept=".ico,.png,.jpg,.jpeg,.svg" class="hidden" onchange="previewImage(this, 'icon-preview')">
+                                <label for="icon-input" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded text-xs text-center cursor-pointer hover:bg-gray-50 transition">
+                                    <span class="material-symbols-outlined align-middle mr-1" style="font-size: 14px;">upload</span>
+                                    Choose File
+                                </label>
+                                @endif
+                                <p class="text-xs text-gray-400 mt-2 text-center">Browser tab icon (ICO, PNG, 32x32px)</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Logo -->
+                        <div>
+                            <label class="block text-gray-700 mb-2" style="font-size: 11px;">
+                                <span class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined" style="font-size: 14px;">image</span>
+                                    Logo
+                                </span>
+                            </label>
+                            <div class="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                <div class="flex items-center justify-center mb-3">
+                                    <div class="w-32 h-16 border border-gray-300 rounded bg-white flex items-center justify-center overflow-hidden">
+                                        <img src="{{ \App\Models\SystemSetting::logoPath() }}" alt="Current Logo" class="max-w-full max-h-full object-contain" id="logo-preview" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <span class="material-symbols-outlined text-gray-300" style="font-size: 32px; display: none;">image</span>
+                                    </div>
+                                </div>
+                                @if($canUpdate)
+                                <input type="file" name="logo" id="logo-input" accept=".png,.jpg,.jpeg,.svg" class="hidden" onchange="previewImage(this, 'logo-preview')">
+                                <label for="logo-input" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded text-xs text-center cursor-pointer hover:bg-gray-50 transition">
+                                    <span class="material-symbols-outlined align-middle mr-1" style="font-size: 14px;">upload</span>
+                                    Choose File
+                                </label>
+                                @endif
+                                <p class="text-xs text-gray-400 mt-2 text-center">Sidebar & Login (PNG, 200x80px)</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Hero Image -->
+                        <div>
+                            <label class="block text-gray-700 mb-2" style="font-size: 11px;">
+                                <span class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined" style="font-size: 14px;">wallpaper</span>
+                                    Hero Image
+                                </span>
+                            </label>
+                            <div class="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                <div class="flex items-center justify-center mb-3">
+                                    <div class="w-32 h-16 border border-gray-300 rounded bg-white flex items-center justify-center overflow-hidden">
+                                        <img src="{{ \App\Models\SystemSetting::heroImagePath() }}" alt="Current Hero" class="max-w-full max-h-full object-cover" id="hero-preview" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <span class="material-symbols-outlined text-gray-300" style="font-size: 32px; display: none;">image</span>
+                                    </div>
+                                </div>
+                                @if($canUpdate)
+                                <input type="file" name="hero_image" id="hero-input" accept=".png,.jpg,.jpeg" class="hidden" onchange="previewImage(this, 'hero-preview')">
+                                <label for="hero-input" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded text-xs text-center cursor-pointer hover:bg-gray-50 transition">
+                                    <span class="material-symbols-outlined align-middle mr-1" style="font-size: 14px;">upload</span>
+                                    Choose File
+                                </label>
+                                @endif
+                                <p class="text-xs text-gray-400 mt-2 text-center">Login background (JPG/PNG, 1920x1080px)</p>
+                            </div>
+                        </div>
+                    </div>
+                    @if($canUpdate)
+                    <div class="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                        <button type="submit" class="inline-flex items-center px-3 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition" style="min-height: 32px; font-family: Poppins, sans-serif; font-size: 11px;">
+                            <span class="material-symbols-outlined mr-1" style="font-size: 14px;">upload</span>
+                            UPLOAD BRANDING
+                        </button>
+                    </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </form>
+
     <!-- Settings Form -->
     <form id="config-form" action="{{ route('settings.configuration.update') }}" method="POST">
         @csrf
@@ -372,4 +475,23 @@
         </div>
     </form>
 </div>
+
+@push('scripts')
+<script>
+function previewImage(input, previewId) {
+    const preview = document.getElementById(previewId);
+    const placeholder = preview.nextElementSibling;
+    
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            preview.src = e.target.result;
+            preview.style.display = 'block';
+            if (placeholder) placeholder.style.display = 'none';
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+</script>
+@endpush
 @endsection

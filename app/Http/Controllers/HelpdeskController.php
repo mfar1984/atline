@@ -6,6 +6,8 @@ use App\Jobs\SendTicketNotificationJob;
 use App\Models\Asset;
 use App\Models\Client;
 use App\Models\Employee;
+use App\Models\Organization;
+use App\Models\Project;
 use App\Models\Role;
 use App\Models\Ticket;
 use App\Models\TicketCategory;
@@ -18,29 +20,26 @@ use App\Models\User;
 use App\Services\ActivityLogService;
 use App\Services\HelpdeskEmailService;
 use App\Services\TicketNotificationService;
+use App\Traits\ProjectAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
 class HelpdeskController extends Controller
 {
-    /**
-     * Check if current user is a client
-     */
-    private function getClientForUser()
-    {
-        return Client::where('user_id', Auth::id())->first();
-    }
+    use ProjectAccess;
 
     /**
      * Calculate average response time for tickets
      */
-    private function calculateAvgResponseTime($client = null)
+    private function calculateAvgResponseTime($projectIds = null)
     {
         $query = Ticket::whereNotNull('resolved_at');
         
-        if ($client) {
-            $query->where('client_id', $client->id);
+        if ($projectIds !== null) {
+            $query->whereHas('asset', function($q) use ($projectIds) {
+                $q->whereIn('project_id', $projectIds);
+            });
         }
 
         $tickets = $query->get();
@@ -66,12 +65,14 @@ class HelpdeskController extends Controller
     /**
      * Calculate average resolution time for tickets (from first reply to resolved)
      */
-    private function calculateAvgResolutionTime($client = null)
+    private function calculateAvgResolutionTime($projectIds = null)
     {
         $query = Ticket::whereNotNull('resolved_at')->whereHas('replies');
         
-        if ($client) {
-            $query->where('client_id', $client->id);
+        if ($projectIds !== null) {
+            $query->whereHas('asset', function($q) use ($projectIds) {
+                $q->whereIn('project_id', $projectIds);
+            });
         }
 
         $tickets = $query->with(['replies' => function($q) {
@@ -107,8 +108,9 @@ class HelpdeskController extends Controller
 
     /**
      * Check if user has helpdesk permission (staff)
+     * Note: isStaff() is inherited from ProjectAccess trait
      */
-    private function isStaff()
+    private function hasHelpdeskPermission()
     {
         $user = Auth::user();
         if (!$user->role) return false;
@@ -121,8 +123,6 @@ class HelpdeskController extends Controller
         $permissions = $user->role->permissions ?? [];
         
         if (is_array($permissions)) {
-            // Check for any helpdesk sub-module view permission
-            // Actual permissions are: helpdesk_tickets.view, helpdesk_templates.view, etc.
             foreach ($permissions as $permission) {
                 if (str_starts_with($permission, 'helpdesk_') && str_ends_with($permission, '.view')) {
                     return true;
@@ -141,19 +141,17 @@ class HelpdeskController extends Controller
         $user = Auth::user();
         if (!$user->role) return false;
         
-        // Only Administrator can see all tickets
         return $user->role->name === 'Administrator';
     }
 
     /**
-     * Check if user can assign tickets (Administrator or has helpdesk_tickets.assign permission)
+     * Check if user can assign tickets
      */
     private function canAssign()
     {
         $user = Auth::user();
         if (!$user->role) return false;
         
-        // Administrator can always assign
         if ($user->role->name === 'Administrator') {
             return true;
         }
@@ -161,7 +159,6 @@ class HelpdeskController extends Controller
         $permissions = $user->role->permissions ?? [];
         
         if (is_array($permissions)) {
-            // Check for helpdesk_tickets.assign permission
             if (in_array('helpdesk_tickets.assign', $permissions)) {
                 return true;
             }
@@ -172,11 +169,9 @@ class HelpdeskController extends Controller
 
     /**
      * Get employees who can be assigned tickets
-     * All active employees with user accounts can be assigned
      */
     private function getAssignableEmployees()
     {
-        // Get all active employees who have user accounts
         return Employee::whereNotNull('user_id')
             ->whereHas('user', function($q) {
                 $q->where('is_active', true);
@@ -187,33 +182,25 @@ class HelpdeskController extends Controller
             ->get();
     }
 
-    public function index(Request $request)
+    /**
+     * Get ticket IDs that the current user can access
+     * Based on projects they have access to (via assets)
+     */
+    private function getAccessibleTicketQuery()
     {
         $user = Auth::user();
-        $search = $request->get('search');
-        $status = $request->get('status');
-        $priority = $request->get('priority');
-        $perPage = \App\Models\SystemSetting::paginationSize();
-        $activeTab = $request->get('tab', 'tickets');
-
-        $client = $this->getClientForUser();
-        $isStaff = $this->isStaff();
-        $canAssign = $this->canAssign();
-
-        // If not client and not staff with permission, deny access
-        if (!$client && !$isStaff) {
-            abort(403, 'You do not have permission to access helpdesk.');
-        }
-
-        $query = Ticket::with(['client', 'creator', 'assignee', 'assignees.employee', 'asset']);
-        $canSeeAllTickets = $this->canSeeAllTickets();
-
-        // Client can only see their own tickets
-        if ($client) {
-            $query->where('client_id', $client->id);
-        } elseif (!$canSeeAllTickets) {
-            // Staff (non-Administrator): only see tickets they created or assigned to them
-            $query->where(function($q) use ($user) {
+        $projectIds = $this->getAccessibleProjectIds();
+        
+        $query = Ticket::query();
+        
+        // If staff/admin, they see based on their role
+        if ($this->isStaff()) {
+            if ($this->canSeeAllTickets()) {
+                // Administrator sees all
+                return $query;
+            }
+            // Staff sees tickets they created or assigned to them
+            return $query->where(function($q) use ($user) {
                 $q->where('created_by', $user->id)
                   ->orWhere('assigned_to', $user->id)
                   ->orWhereHas('assignees', function($q2) use ($user) {
@@ -221,17 +208,109 @@ class HelpdeskController extends Controller
                   });
             });
         }
-        // Administrator: see ALL tickets (no filter)
+        
+        // Client user - see tickets for assets in their accessible projects
+        if ($projectIds !== null) {
+            return $query->where(function($q) use ($projectIds, $user) {
+                // Tickets for assets in accessible projects
+                $q->whereHas('asset', function($q2) use ($projectIds) {
+                    $q2->whereIn('project_id', $projectIds);
+                })
+                // Or tickets they created themselves
+                ->orWhere('created_by', $user->id);
+            });
+        }
+        
+        // No access
+        return $query->whereRaw('1 = 0');
+    }
+
+    public function index(Request $request)
+    {
+        $user = Auth::user();
+        $search = $request->get('search');
+        $status = $request->get('status');
+        $priority = $request->get('priority');
+        $perPage = \App\Models\SystemSetting::paginationSize();
+
+        $isStaff = $this->isStaff();
+        $isClientUser = !$isStaff;
+        $canAssign = $this->canAssign();
+        $projectIds = $this->getAccessibleProjectIds();
+
+        // If not client user and not staff with permission, deny access
+        if ($isClientUser && ($projectIds === null || empty($projectIds))) {
+            // Client user with no project access
+            if (!$this->hasHelpdeskPermission()) {
+                abort(403, 'You do not have permission to access helpdesk.');
+            }
+        }
+
+        if (!$isClientUser && !$this->hasHelpdeskPermission()) {
+            abort(403, 'You do not have permission to access helpdesk.');
+        }
+
+        // Define tabs with their permissions in order
+        // Client users can ALWAYS access tickets and reports tabs (data is isolated by project access)
+        // Staff users can access all tabs (if permitted)
+        $tabPermissions = $isClientUser ? [
+            'tickets' => null, // Client users always have access to their tickets
+            'reports' => null, // Client users always have access to their reports (isolated data)
+        ] : [
+            'tickets' => 'helpdesk_tickets.view',
+            'templates' => 'helpdesk_templates.view',
+            'priorities' => 'helpdesk_priorities.view',
+            'categories' => 'helpdesk_categories.view',
+            'statuses' => 'helpdesk_statuses.view',
+            'reports' => 'helpdesk_reports.view',
+        ];
+
+        // Get requested tab or find first accessible tab
+        $requestedTab = $request->get('tab');
+        $activeTab = null;
+
+        if ($requestedTab && array_key_exists($requestedTab, $tabPermissions)) {
+            // Check if user has permission for requested tab
+            // For client users, null permission means always allowed (data is isolated)
+            $permission = $tabPermissions[$requestedTab];
+            if ($permission === null || $user->hasPermission($permission)) {
+                $activeTab = $requestedTab;
+            }
+        }
+
+        // If no valid tab yet, find first accessible tab
+        if (!$activeTab) {
+            foreach ($tabPermissions as $tab => $permission) {
+                // For client users, null permission means always allowed
+                if ($permission === null || $user->hasPermission($permission)) {
+                    $activeTab = $tab;
+                    break;
+                }
+            }
+        }
+
+        // Default to tickets if no permission found (for backwards compatibility)
+        if (!$activeTab) {
+            $activeTab = 'tickets';
+        }
+
+        // If requested tab differs from active tab (no permission), redirect
+        if ($requestedTab && $requestedTab !== $activeTab) {
+            return redirect()->route('helpdesk.index', ['tab' => $activeTab]);
+        }
+
+        $query = $this->getAccessibleTicketQuery()
+            ->with(['client', 'creator', 'assignee', 'assignees.employee', 'asset.project']);
 
         if ($search) {
             $query->where(function($q) use ($search) {
                 $q->where('ticket_number', 'like', "%{$search}%")
                   ->orWhere('subject', 'like', "%{$search}%")
-                  ->orWhereHas('client', function($q) use ($search) {
-                      $q->where('name', 'like', "%{$search}%");
-                  })
                   ->orWhereHas('asset', function($q) use ($search) {
                       $q->where('serial_number', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('asset.project', function($q) use ($search) {
+                      $q->where('name', 'like', "%{$search}%");
                   });
             });
         }
@@ -246,65 +325,24 @@ class HelpdeskController extends Controller
 
         $tickets = $query->orderBy('created_at', 'desc')->paginate($perPage)->withQueryString();
         
-        // For staff with assign permission, get all clients. Otherwise no need
-        $clients = $canAssign ? Client::active()->orderBy('name')->get() : collect();
+        // Get organizations for filter (staff only)
+        $organizations = $canAssign ? Organization::active()->orderBy('name')->get() : collect();
         
-        // Get assignable employees (those with helpdesk.assign permission)
+        // Get assignable employees
         $assignableEmployees = $canAssign ? $this->getAssignableEmployees() : collect();
 
         // Stats - based on user's visible tickets
-        if ($client) {
-            $stats = [
-                'open' => Ticket::where('client_id', $client->id)->where('status', 'open')->count(),
-                'in_progress' => Ticket::where('client_id', $client->id)->where('status', 'in_progress')->count(),
-                'pending' => Ticket::where('client_id', $client->id)->where('status', 'pending')->count(),
-                'resolved' => Ticket::where('client_id', $client->id)->where('status', 'resolved')->count(),
-            ];
-        } elseif (!$canSeeAllTickets) {
-            // Staff (non-Administrator): stats for their tickets only
-            $stats = [
-                'open' => Ticket::where(function($q) use ($user) {
-                    $q->where('created_by', $user->id)
-                      ->orWhere('assigned_to', $user->id)
-                      ->orWhereHas('assignees', function($q2) use ($user) {
-                          $q2->where('user_id', $user->id);
-                      });
-                })->where('status', 'open')->count(),
-                'in_progress' => Ticket::where(function($q) use ($user) {
-                    $q->where('created_by', $user->id)
-                      ->orWhere('assigned_to', $user->id)
-                      ->orWhereHas('assignees', function($q2) use ($user) {
-                          $q2->where('user_id', $user->id);
-                      });
-                })->where('status', 'in_progress')->count(),
-                'pending' => Ticket::where(function($q) use ($user) {
-                    $q->where('created_by', $user->id)
-                      ->orWhere('assigned_to', $user->id)
-                      ->orWhereHas('assignees', function($q2) use ($user) {
-                          $q2->where('user_id', $user->id);
-                      });
-                })->where('status', 'pending')->count(),
-                'resolved' => Ticket::where(function($q) use ($user) {
-                    $q->where('created_by', $user->id)
-                      ->orWhere('assigned_to', $user->id)
-                      ->orWhereHas('assignees', function($q2) use ($user) {
-                          $q2->where('user_id', $user->id);
-                      });
-                })->where('status', 'resolved')->count(),
-            ];
-        } else {
-            // Administrator: all stats
-            $stats = [
-                'open' => Ticket::where('status', 'open')->count(),
-                'in_progress' => Ticket::where('status', 'in_progress')->count(),
-                'pending' => Ticket::where('status', 'pending')->count(),
-                'resolved' => Ticket::where('status', 'resolved')->count(),
-            ];
-        }
+        $statsQuery = $this->getAccessibleTicketQuery();
+        $stats = [
+            'open' => (clone $statsQuery)->where('status', 'open')->count(),
+            'in_progress' => (clone $statsQuery)->where('status', 'in_progress')->count(),
+            'pending' => (clone $statsQuery)->where('status', 'pending')->count(),
+            'resolved' => (clone $statsQuery)->where('status', 'resolved')->count(),
+        ];
 
         // Load ticket categories for the categories tab
         $ticketCategories = collect();
-        if ($activeTab === 'categories' && !$client) {
+        if ($activeTab === 'categories' && $isStaff) {
             $categoryQuery = TicketCategory::withCount('tickets');
             
             if ($search) {
@@ -323,7 +361,7 @@ class HelpdeskController extends Controller
 
         // Load ticket priorities for the priorities tab
         $ticketPriorities = collect();
-        if ($activeTab === 'priorities' && !$client) {
+        if ($activeTab === 'priorities' && $isStaff) {
             $priorityQuery = TicketPriority::withCount('tickets');
             
             if ($search) {
@@ -342,7 +380,7 @@ class HelpdeskController extends Controller
 
         // Load ticket statuses for the statuses tab
         $ticketStatuses = collect();
-        if ($activeTab === 'statuses' && !$client) {
+        if ($activeTab === 'statuses' && $isStaff) {
             $statusQuery = TicketStatus::withCount('tickets');
             
             if ($search) {
@@ -366,7 +404,7 @@ class HelpdeskController extends Controller
 
         // Load email templates for the templates tab
         $emailTemplates = collect();
-        if ($activeTab === 'templates' && !$client) {
+        if ($activeTab === 'templates' && $isStaff) {
             $templateQuery = TicketEmailTemplate::with('updatedByUser');
             
             if ($search) {
@@ -394,14 +432,11 @@ class HelpdeskController extends Controller
         $replyComparison = collect();
         $responseTimeDistribution = collect();
         $recentTickets = collect();
-        $isClient = (bool) $client;
+        $isClient = $isClientUser;
 
         if ($activeTab === 'reports') {
-            // Build base query for client isolation
-            $baseQuery = Ticket::query();
-            if ($client) {
-                $baseQuery->where('client_id', $client->id);
-            }
+            // Build base query with access filter
+            $baseQuery = $this->getAccessibleTicketQuery();
 
             // Get reply counts
             $totalReplies = TicketReply::query();
@@ -409,13 +444,14 @@ class HelpdeskController extends Controller
                 $q->whereHas('employee');
             });
             $clientReplies = TicketReply::whereHas('user', function($q) {
-                $q->whereHas('client');
+                $q->whereDoesntHave('employee');
             });
 
-            if ($client) {
-                $totalReplies->whereHas('ticket', fn($q) => $q->where('client_id', $client->id));
-                $staffReplies->whereHas('ticket', fn($q) => $q->where('client_id', $client->id));
-                $clientReplies->whereHas('ticket', fn($q) => $q->where('client_id', $client->id));
+            if ($projectIds !== null) {
+                $ticketIds = (clone $baseQuery)->pluck('id')->toArray();
+                $totalReplies->whereIn('ticket_id', $ticketIds);
+                $staffReplies->whereIn('ticket_id', $ticketIds);
+                $clientReplies->whereIn('ticket_id', $ticketIds);
             }
 
             // Report Stats
@@ -426,18 +462,21 @@ class HelpdeskController extends Controller
                 'pending_tickets' => (clone $baseQuery)->where('status', 'pending')->count(),
                 'resolved_tickets' => (clone $baseQuery)->where('status', 'resolved')->count(),
                 'closed_tickets' => (clone $baseQuery)->where('status', 'closed')->count(),
-                'avg_response_time' => $this->calculateAvgResponseTime($client),
-                'avg_resolution_time' => $this->calculateAvgResolutionTime($client),
+                'avg_response_time' => $this->calculateAvgResponseTime($projectIds),
+                'avg_resolution_time' => $this->calculateAvgResolutionTime($projectIds),
                 'total_replies' => $totalReplies->count(),
                 'staff_replies' => $staffReplies->count(),
                 'client_replies' => $clientReplies->count(),
-                'total_clients' => $client ? 1 : Client::count(),
+                'total_organizations' => $isStaff ? Organization::count() : 
+                    ($projectIds ? Project::whereIn('id', $projectIds)->distinct('organization_id')->count('organization_id') : 0),
             ];
 
             // Tickets by Status
-            $ticketsByStatus = TicketStatus::withCount(['tickets' => function($q) use ($client) {
-                if ($client) {
-                    $q->where('client_id', $client->id);
+            $ticketsByStatus = TicketStatus::withCount(['tickets' => function($q) use ($projectIds) {
+                if ($projectIds !== null) {
+                    $q->whereHas('asset', function($q2) use ($projectIds) {
+                        $q2->whereIn('project_id', $projectIds);
+                    });
                 }
             }])->active()->ordered()->get()->map(function($status) {
                 return [
@@ -448,9 +487,11 @@ class HelpdeskController extends Controller
             });
 
             // Tickets by Priority
-            $ticketsByPriority = TicketPriority::withCount(['tickets' => function($q) use ($client) {
-                if ($client) {
-                    $q->where('client_id', $client->id);
+            $ticketsByPriority = TicketPriority::withCount(['tickets' => function($q) use ($projectIds) {
+                if ($projectIds !== null) {
+                    $q->whereHas('asset', function($q2) use ($projectIds) {
+                        $q2->whereIn('project_id', $projectIds);
+                    });
                 }
             }])->active()->ordered()->get()->map(function($priority) {
                 return [
@@ -461,9 +502,11 @@ class HelpdeskController extends Controller
             });
 
             // Tickets by Category
-            $ticketsByCategory = TicketCategory::withCount(['tickets' => function($q) use ($client) {
-                if ($client) {
-                    $q->where('client_id', $client->id);
+            $ticketsByCategory = TicketCategory::withCount(['tickets' => function($q) use ($projectIds) {
+                if ($projectIds !== null) {
+                    $q->whereHas('asset', function($q2) use ($projectIds) {
+                        $q2->whereIn('project_id', $projectIds);
+                    });
                 }
             }])->active()->ordered()->get()->map(function($category) {
                 return [
@@ -472,33 +515,28 @@ class HelpdeskController extends Controller
                 ];
             })->filter(fn($cat) => $cat['count'] > 0)->values();
 
-            // Top Clients by Tickets (only for staff)
-            if (!$client) {
-                $topClientsByTickets = Client::withCount('tickets')
+            // Top Organizations by Tickets (staff only)
+            if ($isStaff) {
+                $topClientsByTickets = Organization::withCount(['tickets'])
                     ->orderByDesc('tickets_count')
                     ->limit(5)
                     ->get()
-                    ->map(function($c) {
+                    ->map(function($org) {
                         return [
-                            'name' => $c->name,
-                            'count' => $c->tickets_count,
+                            'name' => $org->name,
+                            'count' => $org->tickets_count,
                         ];
-                    })->filter(fn($c) => $c['count'] > 0)->values();
+                    })->filter(fn($o) => $o['count'] > 0)->values();
             }
 
-            // Monthly Trend (last 6 months) - Created vs Resolved
+            // Monthly Trend (last 6 months)
             $monthlyTrend = collect();
             for ($i = 5; $i >= 0; $i--) {
                 $date = now()->subMonths($i);
-                $createdQuery = Ticket::whereYear('created_at', $date->year)
+                $createdQuery = (clone $baseQuery)->whereYear('created_at', $date->year)
                     ->whereMonth('created_at', $date->month);
-                $resolvedQuery = Ticket::whereYear('resolved_at', $date->year)
+                $resolvedQuery = (clone $baseQuery)->whereYear('resolved_at', $date->year)
                     ->whereMonth('resolved_at', $date->month);
-                
-                if ($client) {
-                    $createdQuery->where('client_id', $client->id);
-                    $resolvedQuery->where('client_id', $client->id);
-                }
 
                 $monthlyTrend->push([
                     'month' => $date->format('M'),
@@ -512,11 +550,7 @@ class HelpdeskController extends Controller
             for ($i = 3; $i >= 0; $i--) {
                 $startOfWeek = now()->subWeeks($i)->startOfWeek();
                 $endOfWeek = now()->subWeeks($i)->endOfWeek();
-                $weekQuery = Ticket::whereBetween('resolved_at', [$startOfWeek, $endOfWeek]);
-                
-                if ($client) {
-                    $weekQuery->where('client_id', $client->id);
-                }
+                $weekQuery = (clone $baseQuery)->whereBetween('resolved_at', [$startOfWeek, $endOfWeek]);
 
                 $weeklyResolved->push([
                     'week' => 'Week ' . (4 - $i),
@@ -524,8 +558,8 @@ class HelpdeskController extends Controller
                 ]);
             }
 
-            // Reply Comparison (Staff vs Client) - last 6 months
-            if (!$client) {
+            // Reply Comparison (Staff vs Client) - staff only
+            if ($isStaff) {
                 $replyComparison = collect();
                 for ($i = 5; $i >= 0; $i--) {
                     $date = now()->subMonths($i);
@@ -535,7 +569,7 @@ class HelpdeskController extends Controller
                         ->count();
                     $clientCount = TicketReply::whereYear('created_at', $date->year)
                         ->whereMonth('created_at', $date->month)
-                        ->whereHas('user', fn($q) => $q->whereHas('client'))
+                        ->whereHas('user', fn($q) => $q->whereDoesntHave('employee'))
                         ->count();
 
                     $replyComparison->push([
@@ -586,36 +620,48 @@ class HelpdeskController extends Controller
             }
 
             // Recent Tickets
-            $recentQuery = Ticket::with(['client', 'ticketPriority', 'ticketStatus'])
-                ->withCount('replies');
-            if ($client) {
-                $recentQuery->where('client_id', $client->id);
-            }
-            $recentTickets = $recentQuery->orderByDesc('created_at')->limit(10)->get();
+            $recentTickets = (clone $baseQuery)
+                ->with(['asset.project.organization', 'ticketPriority', 'ticketStatus'])
+                ->withCount('replies')
+                ->orderByDesc('created_at')
+                ->limit(10)
+                ->get();
         }
 
-        return view('helpdesk.index', compact('tickets', 'clients', 'assignableEmployees', 'stats', 'client', 'isStaff', 'canAssign', 'activeTab', 'ticketCategories', 'ticketPriorities', 'ticketStatuses', 'activeCategories', 'activePriorities', 'activeStatuses', 'emailTemplates', 'reportStats', 'ticketsByStatus', 'ticketsByPriority', 'ticketsByCategory', 'topClientsByTickets', 'monthlyTrend', 'weeklyResolved', 'replyComparison', 'responseTimeDistribution', 'recentTickets', 'isClient'));
+        // For backward compatibility with views
+        $client = $this->getClientForUser();
+        $clients = collect(); // Legacy - not used
+
+        return view('helpdesk.index', compact(
+            'tickets', 'clients', 'organizations', 'assignableEmployees', 'stats', 'client', 
+            'isStaff', 'canAssign', 'activeTab', 'ticketCategories', 'ticketPriorities', 
+            'ticketStatuses', 'activeCategories', 'activePriorities', 'activeStatuses', 
+            'emailTemplates', 'reportStats', 'ticketsByStatus', 'ticketsByPriority', 
+            'ticketsByCategory', 'topClientsByTickets', 'monthlyTrend', 'weeklyResolved', 
+            'replyComparison', 'responseTimeDistribution', 'recentTickets', 'isClient'
+        ));
     }
 
     /**
-     * Verify serial number belongs to client's project
+     * Verify serial number belongs to user's accessible projects
      */
     public function verifySerialNumber(Request $request)
     {
         $serialNumber = $request->input('serial_number');
-        $client = $this->getClientForUser();
+        $projectIds = $this->getAccessibleProjectIds();
 
-        if (!$client) {
-            return response()->json(['valid' => false, 'message' => 'Not a client user']);
+        if ($projectIds === null) {
+            // Staff can verify any serial
+            $asset = Asset::where('serial_number', $serialNumber)
+                ->with(['project.organization', 'category', 'brand'])
+                ->first();
+        } else {
+            // Client can only verify serial from their accessible projects
+            $asset = Asset::where('serial_number', $serialNumber)
+                ->whereIn('project_id', $projectIds)
+                ->with(['project.organization', 'category', 'brand'])
+                ->first();
         }
-
-        // Find asset by serial number that belongs to client's projects
-        $asset = Asset::where('serial_number', $serialNumber)
-            ->whereHas('project', function($q) use ($client) {
-                $q->where('client_id', $client->id);
-            })
-            ->with(['project', 'category', 'brand'])
-            ->first();
 
         if (!$asset) {
             return response()->json([
@@ -634,6 +680,7 @@ class HelpdeskController extends Controller
                 'category' => $asset->category->name ?? '-',
                 'brand' => $asset->brand->name ?? '-',
                 'project' => $asset->project->name ?? '-',
+                'organization' => $asset->project->organization->name ?? '-',
             ]
         ]);
     }
@@ -641,17 +688,16 @@ class HelpdeskController extends Controller
     public function store(Request $request)
     {
         $user = Auth::user();
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         $canAssign = $this->canAssign();
+        $projectIds = $this->getAccessibleProjectIds();
 
         // Get default status (Open)
         $defaultStatus = TicketStatus::where('is_default', true)->first();
         $statusId = $defaultStatus ? $defaultStatus->id : null;
 
-        // Validation rules differ for client vs staff
-        if ($client) {
-            // Client must provide asset_id (verified serial number)
+        if (!$isStaff) {
+            // Client user must provide asset_id (verified serial number)
             $validated = $request->validate([
                 'asset_id' => 'required|exists:assets,id',
                 'subject' => 'required|string|max:255',
@@ -661,24 +707,22 @@ class HelpdeskController extends Controller
                 'attachments.*' => 'nullable|file|max:10240',
             ]);
 
-            // Verify asset belongs to client's project
+            // Verify asset belongs to user's accessible projects
             $asset = Asset::where('id', $validated['asset_id'])
-                ->whereHas('project', function($q) use ($client) {
-                    $q->where('client_id', $client->id);
-                })
+                ->whereIn('project_id', $projectIds ?? [])
+                ->with('project.organization')
                 ->first();
 
             if (!$asset) {
                 return back()->with('error', 'Invalid asset. Please verify serial number again.');
             }
 
-            // Get priority and category names for legacy fields
             $priority = TicketPriority::find($validated['priority_id']);
             $category = $validated['category_id'] ? TicketCategory::find($validated['category_id']) : null;
 
             $ticketData = [
                 'ticket_number' => Ticket::generateTicketNumber(),
-                'client_id' => $client->id,
+                'organization_id' => $asset->project->organization_id ?? null,
                 'asset_id' => $asset->id,
                 'created_by' => $user->id,
                 'subject' => $validated['subject'],
@@ -691,9 +735,9 @@ class HelpdeskController extends Controller
                 'status_id' => $statusId,
             ];
         } elseif ($canAssign) {
-            // Staff with assign can create ticket for any client
+            // Staff with assign can create ticket
             $validated = $request->validate([
-                'client_id' => 'required|exists:clients,id',
+                'organization_id' => 'nullable|exists:organizations,id',
                 'asset_id' => 'nullable|exists:assets,id',
                 'subject' => 'required|string|max:255',
                 'description' => 'required|string',
@@ -702,13 +746,21 @@ class HelpdeskController extends Controller
                 'attachments.*' => 'nullable|file|max:10240',
             ]);
 
-            // Get priority and category names for legacy fields
             $priority = TicketPriority::find($validated['priority_id']);
             $category = $validated['category_id'] ? TicketCategory::find($validated['category_id']) : null;
 
+            // If asset provided, get organization from asset's project
+            $organizationId = $validated['organization_id'] ?? null;
+            if ($validated['asset_id']) {
+                $asset = Asset::with('project')->find($validated['asset_id']);
+                if ($asset && $asset->project) {
+                    $organizationId = $asset->project->organization_id;
+                }
+            }
+
             $ticketData = [
                 'ticket_number' => Ticket::generateTicketNumber(),
-                'client_id' => $validated['client_id'],
+                'organization_id' => $organizationId,
                 'asset_id' => $validated['asset_id'] ?? null,
                 'created_by' => $user->id,
                 'subject' => $validated['subject'],
@@ -721,7 +773,7 @@ class HelpdeskController extends Controller
                 'status_id' => $statusId,
             ];
         } else {
-            // Staff without assign: create internal ticket (no client required)
+            // Staff without assign: create internal ticket
             $validated = $request->validate([
                 'subject' => 'required|string|max:255',
                 'description' => 'required|string',
@@ -730,13 +782,12 @@ class HelpdeskController extends Controller
                 'attachments.*' => 'nullable|file|max:10240',
             ]);
 
-            // Get priority and category names for legacy fields
             $priority = TicketPriority::find($validated['priority_id']);
             $category = $validated['category_id'] ? TicketCategory::find($validated['category_id']) : null;
 
             $ticketData = [
                 'ticket_number' => Ticket::generateTicketNumber(),
-                'client_id' => null, // Internal ticket
+                'organization_id' => null,
                 'asset_id' => null,
                 'created_by' => $user->id,
                 'subject' => $validated['subject'],
@@ -771,7 +822,7 @@ class HelpdeskController extends Controller
         try {
             ActivityLogService::logCreate($ticket, 'helpdesk', "Created ticket: #{$ticket->ticket_number} - {$ticket->subject}");
         } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
+            // Silent fail
         }
 
         // Dispatch email notification job
@@ -788,59 +839,77 @@ class HelpdeskController extends Controller
     public function show(Ticket $ticket)
     {
         $user = Auth::user();
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         $canAssign = $this->canAssign();
-        $canSeeAllTickets = $this->canSeeAllTickets();
+        $projectIds = $this->getAccessibleProjectIds();
 
         // Check access
-        if ($client && $ticket->client_id !== $client->id) {
-            abort(403);
-        }
-
-        if (!$client && !$isStaff) {
-            abort(403);
-        }
-
-        // Staff (non-Administrator) can only see their own tickets or tickets assigned to them
-        if (!$client && !$canSeeAllTickets) {
+        if (!$isStaff) {
+            // Client user - check if ticket's asset is in their accessible projects
+            if ($ticket->asset_id) {
+                $asset = Asset::find($ticket->asset_id);
+                if (!$asset || ($projectIds !== null && !in_array($asset->project_id, $projectIds))) {
+                    // Also allow if they created the ticket
+                    if ($ticket->created_by !== $user->id) {
+                        abort(403);
+                    }
+                }
+            } elseif ($ticket->created_by !== $user->id) {
+                abort(403);
+            }
+        } elseif (!$this->canSeeAllTickets()) {
+            // Staff (non-Administrator) can only see their own tickets or assigned
             $isAssigned = $ticket->assignees()->where('user_id', $user->id)->exists();
             if ($ticket->created_by !== $user->id && $ticket->assigned_to !== $user->id && !$isAssigned) {
                 abort(403, 'You can only view tickets you created or assigned to you.');
             }
         }
 
-        $ticket->load(['client', 'creator', 'assignee', 'assignees.employee', 'asset.project', 'asset.category', 'asset.brand', 'replies.user', 'replies.attachments', 'attachments', 'ticketCategory', 'ticketPriority', 'ticketStatus']);
+        $ticket->load([
+            'creator', 'assignee', 'assignees.employee', 
+            'asset.project.organization', 'asset.category', 'asset.brand', 
+            'replies.user', 'replies.attachments', 'attachments', 
+            'ticketCategory', 'ticketPriority', 'ticketStatus', 'organization'
+        ]);
         
         try {
             ActivityLogService::logView($ticket, 'helpdesk', "Viewed ticket: #{$ticket->ticket_number}");
         } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
+            // Silent fail
         }
 
-        // Get assignable employees (those with helpdesk.assign permission)
         $assignableEmployees = $canAssign ? $this->getAssignableEmployees() : collect();
-        
-        // Get active statuses for the status dropdown
         $activeStatuses = TicketStatus::active()->ordered()->get();
         $activeCategories = TicketCategory::active()->ordered()->get();
         $activePriorities = TicketPriority::active()->ordered()->get();
 
-        return view('helpdesk.show', compact('ticket', 'assignableEmployees', 'client', 'isStaff', 'canAssign', 'activeStatuses', 'activeCategories', 'activePriorities'));
+        // For backward compatibility
+        $client = $this->getClientForUser();
+
+        return view('helpdesk.show', compact(
+            'ticket', 'assignableEmployees', 'client', 'isStaff', 'canAssign', 
+            'activeStatuses', 'activeCategories', 'activePriorities'
+        ));
     }
 
     public function reply(Request $request, Ticket $ticket)
     {
-        $client = $this->getClientForUser();
+        $user = Auth::user();
         $isStaff = $this->isStaff();
+        $projectIds = $this->getAccessibleProjectIds();
 
-        // Check access
-        if ($client && $ticket->client_id !== $client->id) {
-            abort(403);
-        }
-
-        if (!$client && !$isStaff) {
-            abort(403);
+        // Check access (same as show)
+        if (!$isStaff) {
+            if ($ticket->asset_id) {
+                $asset = Asset::find($ticket->asset_id);
+                if (!$asset || ($projectIds !== null && !in_array($asset->project_id, $projectIds))) {
+                    if ($ticket->created_by !== $user->id) {
+                        abort(403);
+                    }
+                }
+            } elseif ($ticket->created_by !== $user->id) {
+                abort(403);
+            }
         }
 
         $validated = $request->validate([
@@ -849,7 +918,7 @@ class HelpdeskController extends Controller
             'attachments.*' => 'nullable|file|max:10240',
         ]);
 
-        $isInternalNote = $client ? false : ($validated['is_internal_note'] ?? false);
+        $isInternalNote = $isStaff ? ($validated['is_internal_note'] ?? false) : false;
 
         $reply = TicketReply::create([
             'ticket_id' => $ticket->id,
@@ -861,7 +930,7 @@ class HelpdeskController extends Controller
         try {
             ActivityLogService::logReply($ticket, "Added reply to ticket: #{$ticket->ticket_number}");
         } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
+            // Silent fail
         }
 
         // Handle attachments
@@ -892,7 +961,6 @@ class HelpdeskController extends Controller
 
     public function updateStatus(Request $request, Ticket $ticket)
     {
-        // Only staff can update status
         if (!$this->isStaff()) {
             abort(403);
         }
@@ -912,7 +980,13 @@ class HelpdeskController extends Controller
             'closed_at' => $newStatus->is_closed ? now() : $ticket->closed_at,
         ]);
 
-        // Send status change notification
+        // Log status update
+        try {
+            ActivityLogService::logUpdate($ticket, 'helpdesk', ['status' => $oldStatus], "Updated ticket #{$ticket->ticket_number} status to: {$newStatus->name}");
+        } catch (\Exception $e) {
+            // Silent fail
+        }
+
         if ($oldStatus !== $statusSlug) {
             $emailService = new HelpdeskEmailService();
             $notificationService = new TicketNotificationService($emailService);
@@ -925,7 +999,6 @@ class HelpdeskController extends Controller
 
     public function assign(Request $request, Ticket $ticket)
     {
-        // Only staff with assign permission can assign
         if (!$this->canAssign()) {
             abort(403, 'You do not have permission to assign tickets.');
         }
@@ -935,27 +1008,32 @@ class HelpdeskController extends Controller
             'assignee_ids.*' => 'exists:users,id',
         ]);
 
-        // Get current assignees before sync
         $currentAssigneeIds = $ticket->assignees()->pluck('user_id')->toArray();
-        
-        // Sync assignees (many-to-many)
         $assigneeIds = $validated['assignee_ids'] ?? [];
         $ticket->assignees()->sync($assigneeIds);
-
-        // Clear legacy assigned_to field (we now use ticket_assignees table)
         $ticket->update(['assigned_to' => null]);
 
-        // Update status if ticket is open and has assignees
         if ($ticket->status === 'open' && count($assigneeIds) > 0) {
             $ticket->update(['status' => 'in_progress']);
         }
 
-        // Send notification to newly assigned users (not already assigned)
         $newAssigneeIds = array_diff($assigneeIds, $currentAssigneeIds);
         if (!empty($newAssigneeIds)) {
             $emailService = new HelpdeskEmailService();
             $notificationService = new TicketNotificationService($emailService);
             $notificationService->sendAssignmentNotifications($ticket, $newAssigneeIds);
+        }
+
+        // Log assign activity
+        try {
+            $assigneeNames = User::whereIn('id', $assigneeIds)->pluck('name')->toArray();
+            $assigneeList = !empty($assigneeNames) ? implode(', ', $assigneeNames) : 'Unassigned';
+            ActivityLogService::logAssign($ticket, 'helpdesk', "Assigned ticket #{$ticket->ticket_number} to: {$assigneeList}", [
+                'assignee_ids' => $assigneeIds,
+                'assignee_names' => $assigneeNames,
+            ]);
+        } catch (\Exception $e) {
+            // Silent fail
         }
 
         return redirect()->route('helpdesk.show', $ticket)
@@ -964,16 +1042,23 @@ class HelpdeskController extends Controller
 
     public function downloadAttachment(TicketAttachment $attachment)
     {
-        $client = $this->getClientForUser();
+        $user = Auth::user();
         $isStaff = $this->isStaff();
+        $projectIds = $this->getAccessibleProjectIds();
+        $ticket = $attachment->ticket;
 
         // Check access
-        if ($client && $attachment->ticket->client_id !== $client->id) {
-            abort(403);
-        }
-
-        if (!$client && !$isStaff) {
-            abort(403);
+        if (!$isStaff) {
+            if ($ticket->asset_id) {
+                $asset = Asset::find($ticket->asset_id);
+                if (!$asset || ($projectIds !== null && !in_array($asset->project_id, $projectIds))) {
+                    if ($ticket->created_by !== $user->id) {
+                        abort(403);
+                    }
+                }
+            } elseif ($ticket->created_by !== $user->id) {
+                abort(403);
+            }
         }
 
         $path = 'ticket-attachments/' . $attachment->ticket_id . '/' . $attachment->filename;
@@ -987,7 +1072,6 @@ class HelpdeskController extends Controller
 
     public function destroy(Ticket $ticket)
     {
-        // Only staff can delete
         if (!$this->isStaff()) {
             abort(403);
         }
@@ -998,12 +1082,10 @@ class HelpdeskController extends Controller
         try {
             ActivityLogService::logDelete($ticket, 'helpdesk', "Deleted ticket: #{$ticketNumber} - {$ticketSubject}");
         } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
+            // Silent fail
         }
 
-        // Delete attachments
         Storage::disk('local')->deleteDirectory('ticket-attachments/' . $ticket->id);
-        
         $ticket->delete();
 
         return redirect()->route('helpdesk.index')
@@ -1032,9 +1114,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logCreate($category, 'helpdesk', "Created ticket category: {$category->name}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         return redirect()->route('helpdesk.index', ['tab' => 'categories'])
             ->with('success', 'Category created successfully.');
@@ -1054,14 +1134,11 @@ class HelpdeskController extends Controller
         ]);
 
         $oldValues = $category->only(['name', 'description', 'color', 'icon']);
-
         $category->update($validated);
 
         try {
             ActivityLogService::logUpdate($category, 'helpdesk', $oldValues, "Updated ticket category: {$category->name}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         return redirect()->route('helpdesk.index', ['tab' => 'categories'])
             ->with('success', 'Category updated successfully.');
@@ -1073,7 +1150,6 @@ class HelpdeskController extends Controller
             abort(403, 'You do not have permission to manage categories.');
         }
 
-        // Check if category has tickets
         if ($category->tickets()->count() > 0) {
             return redirect()->route('helpdesk.index', ['tab' => 'categories'])
                 ->with('error', 'Cannot delete category with existing tickets.');
@@ -1083,9 +1159,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logDelete($category, 'helpdesk', "Deleted ticket category: {$categoryName}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         $category->delete();
 
@@ -1100,7 +1174,6 @@ class HelpdeskController extends Controller
         }
 
         $category->update(['is_active' => !$category->is_active]);
-
         return response()->json(['success' => true]);
     }
 
@@ -1125,7 +1198,6 @@ class HelpdeskController extends Controller
         $validated['sort_order'] = $maxOrder + 1;
         $validated['is_default'] = $validated['is_default'] ?? false;
 
-        // If this is set as default, unset other defaults
         if ($validated['is_default']) {
             TicketPriority::where('is_default', true)->update(['is_default' => false]);
         }
@@ -1134,9 +1206,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logCreate($priority, 'helpdesk', "Created ticket priority: {$priority->name}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         return redirect()->route('helpdesk.index', ['tab' => 'priorities'])
             ->with('success', 'Priority created successfully.');
@@ -1158,10 +1228,8 @@ class HelpdeskController extends Controller
         ]);
 
         $oldValues = $priority->only(['name', 'description', 'color', 'icon', 'level', 'is_default']);
-
         $validated['is_default'] = $validated['is_default'] ?? false;
 
-        // If this is set as default, unset other defaults
         if ($validated['is_default']) {
             TicketPriority::where('is_default', true)->where('id', '!=', $priority->id)->update(['is_default' => false]);
         }
@@ -1170,9 +1238,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logUpdate($priority, 'helpdesk', $oldValues, "Updated ticket priority: {$priority->name}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         return redirect()->route('helpdesk.index', ['tab' => 'priorities'])
             ->with('success', 'Priority updated successfully.');
@@ -1193,9 +1259,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logDelete($priority, 'helpdesk', "Deleted ticket priority: {$priorityName}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         $priority->delete();
 
@@ -1210,7 +1274,6 @@ class HelpdeskController extends Controller
         }
 
         $priority->update(['is_active' => !$priority->is_active]);
-
         return response()->json(['success' => true]);
     }
 
@@ -1222,7 +1285,6 @@ class HelpdeskController extends Controller
 
         TicketPriority::where('is_default', true)->update(['is_default' => false]);
         $priority->update(['is_default' => true]);
-
         return response()->json(['success' => true]);
     }
 
@@ -1248,7 +1310,6 @@ class HelpdeskController extends Controller
         $validated['is_default'] = $validated['is_default'] ?? false;
         $validated['is_closed'] = $validated['is_closed'] ?? false;
 
-        // If this is set as default, unset other defaults
         if ($validated['is_default']) {
             TicketStatus::where('is_default', true)->update(['is_default' => false]);
         }
@@ -1257,9 +1318,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logCreate($status, 'helpdesk', "Created ticket status: {$status->name}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         return redirect()->route('helpdesk.index', ['tab' => 'statuses'])
             ->with('success', 'Status created successfully.');
@@ -1281,11 +1340,9 @@ class HelpdeskController extends Controller
         ]);
 
         $oldValues = $status->only(['name', 'description', 'color', 'icon', 'is_default', 'is_closed']);
-
         $validated['is_default'] = $validated['is_default'] ?? false;
         $validated['is_closed'] = $validated['is_closed'] ?? false;
 
-        // If this is set as default, unset other defaults
         if ($validated['is_default']) {
             TicketStatus::where('is_default', true)->where('id', '!=', $status->id)->update(['is_default' => false]);
         }
@@ -1294,9 +1351,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logUpdate($status, 'helpdesk', $oldValues, "Updated ticket status: {$status->name}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         return redirect()->route('helpdesk.index', ['tab' => 'statuses'])
             ->with('success', 'Status updated successfully.');
@@ -1317,9 +1372,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logDelete($status, 'helpdesk', "Deleted ticket status: {$statusName}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         $status->delete();
 
@@ -1334,7 +1387,6 @@ class HelpdeskController extends Controller
         }
 
         $status->update(['is_active' => !$status->is_active]);
-
         return response()->json(['success' => true]);
     }
 
@@ -1346,7 +1398,6 @@ class HelpdeskController extends Controller
 
         TicketStatus::where('is_default', true)->update(['is_default' => false]);
         $status->update(['is_default' => true]);
-
         return response()->json(['success' => true]);
     }
 
@@ -1393,9 +1444,7 @@ class HelpdeskController extends Controller
 
         try {
             ActivityLogService::logUpdate($emailTemplate, 'helpdesk', $oldValues, "Updated email template: {$emailTemplate->title}");
-        } catch (\Exception $e) {
-            // Silent fail - don't interrupt main operation
-        }
+        } catch (\Exception $e) {}
 
         return redirect()->route('helpdesk.index', ['tab' => 'templates'])
             ->with('success', 'Email template updated successfully.');

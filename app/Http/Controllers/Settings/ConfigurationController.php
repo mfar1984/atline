@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
 use App\Services\ActivityLogService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ConfigurationController extends Controller
 {
@@ -167,5 +168,62 @@ class ConfigurationController extends Controller
         
         return redirect()->route('settings.configuration.index')
             ->with('success', 'System configuration updated successfully.');
+    }
+    
+    public function updateBranding(Request $request)
+    {
+        $request->validate([
+            'icon' => 'nullable|file|mimes:ico,png,jpg,jpeg,svg|max:1024',
+            'logo' => 'nullable|file|mimes:png,jpg,jpeg,svg|max:2048',
+            'hero_image' => 'nullable|file|mimes:png,jpg,jpeg|max:5120',
+        ]);
+        
+        $uploaded = [];
+        
+        // Handle Icon upload
+        if ($request->hasFile('icon')) {
+            $file = $request->file('icon');
+            $filename = 'favicon.' . $file->getClientOriginalExtension();
+            $file->move(public_path('images'), $filename);
+            SystemSetting::setValue('branding', 'icon', '/images/' . $filename);
+            $uploaded[] = 'icon';
+        }
+        
+        // Handle Logo upload
+        if ($request->hasFile('logo')) {
+            $file = $request->file('logo');
+            $filename = 'logo.' . $file->getClientOriginalExtension();
+            $file->move(public_path('images'), $filename);
+            SystemSetting::setValue('branding', 'logo', '/images/' . $filename);
+            $uploaded[] = 'logo';
+        }
+        
+        // Handle Hero Image upload
+        if ($request->hasFile('hero_image')) {
+            $file = $request->file('hero_image');
+            $filename = 'hero-bg.' . $file->getClientOriginalExtension();
+            $file->move(public_path('images'), $filename);
+            SystemSetting::setValue('branding', 'hero_image', '/images/' . $filename);
+            $uploaded[] = 'hero_image';
+        }
+        
+        // Clear cache
+        SystemSetting::clearCache();
+        
+        if (count($uploaded) > 0) {
+            try {
+                ActivityLogService::logSettingsUpdate('branding', [
+                    'uploaded' => $uploaded,
+                ]);
+            } catch (\Exception $e) {
+                // Silent fail
+            }
+            
+            return redirect()->route('settings.configuration.index')
+                ->with('success', 'Branding images uploaded successfully.');
+        }
+        
+        return redirect()->route('settings.configuration.index')
+            ->with('error', 'No files were uploaded.');
     }
 }

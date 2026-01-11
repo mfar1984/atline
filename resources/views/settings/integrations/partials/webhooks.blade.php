@@ -2,6 +2,7 @@
     $credentials = $webhookSetting->getDecryptedCredentials();
     $events = $webhookSetting->settings['events'] ?? [];
     $isDisabled = !auth()->user()->hasPermission('settings_integrations_webhook.update');
+    $testEndpoint = route('webhook.receive');
 @endphp
 
 <div class="space-y-6">
@@ -26,15 +27,37 @@
         @endif
     </div>
 
+    <!-- Test Endpoint Info -->
+    <div class="p-3 rounded-lg" style="background-color: #f0fdf4; border: 1px solid #bbf7d0;">
+        <div class="flex items-start gap-2">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: #16a34a;">tips_and_updates</span>
+            <div class="text-xs" style="color: #166534;">
+                <p class="font-medium">Test Endpoint Available</p>
+                <p class="mt-1">For testing, you can use this internal endpoint:</p>
+                <code class="block mt-1 px-2 py-1 rounded text-xs font-mono" style="background-color: #dcfce7;">{{ $testEndpoint }}</code>
+            </div>
+        </div>
+    </div>
+
     <!-- Configuration Form -->
     <form method="POST" action="{{ route('settings.integrations.webhook.update') }}">
         @csrf
         
         <div class="mb-4">
             <label class="block text-gray-700 mb-1" style="font-size: 11px;">Webhook URL</label>
-            <input type="url" name="webhook_url" value="{{ $credentials['webhook_url'] ?? '' }}" 
-                   class="w-full px-3 border border-gray-300 rounded text-gray-700 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 {{ $isDisabled ? 'bg-gray-100' : '' }}"
-                   style="min-height: 32px; font-size: 11px;" placeholder="https://your-domain.com/webhook" {{ $isDisabled ? 'disabled' : '' }}>
+            <div class="flex items-center gap-2">
+                <input type="url" name="webhook_url" id="webhookUrl" value="{{ $credentials['webhook_url'] ?? '' }}" 
+                       class="flex-1 px-3 border border-gray-300 rounded text-gray-700 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 {{ $isDisabled ? 'bg-gray-100' : '' }}"
+                       style="min-height: 32px; font-size: 11px;" placeholder="https://your-domain.com/webhook" {{ $isDisabled ? 'disabled' : '' }}>
+                @permission('settings_integrations_webhook.update')
+                <button type="button" onclick="useTestEndpoint()"
+                        class="inline-flex items-center px-3 bg-green-100 text-green-700 rounded hover:bg-green-200 transition"
+                        style="min-height: 32px; font-size: 10px;" title="Use test endpoint">
+                    <span class="material-symbols-outlined" style="font-size: 14px;">science</span>
+                    <span class="ml-1">Test URL</span>
+                </button>
+                @endpermission
+            </div>
             <p class="text-xs text-gray-400 mt-1">URL that will receive webhook events</p>
         </div>
 
@@ -144,6 +167,10 @@
 
 @push('scripts')
 <script>
+function useTestEndpoint() {
+    document.getElementById('webhookUrl').value = '{{ route("webhook.receive") }}';
+}
+
 function generateWebhookSecret() {
     const secret = 'whsec_' + Array.from(crypto.getRandomValues(new Uint8Array(24)))
         .map(b => b.toString(16).padStart(2, '0'))

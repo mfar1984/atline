@@ -77,8 +77,8 @@
             <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); border-radius: 8px; padding: 16px; color: white;">
                 <div style="display: flex; align-items: flex-start; justify-content: space-between;">
                     <div>
-                        <p style="font-size: 11px; opacity: 0.8; margin: 0;">Clients</p>
-                        <p style="font-size: 24px; font-weight: 700; margin: 4px 0 0 0;">{{ $stats['total_clients'] }}</p>
+                        <p style="font-size: 11px; opacity: 0.8; margin: 0;">Organizations</p>
+                        <p style="font-size: 24px; font-weight: 700; margin: 4px 0 0 0;">{{ $stats['total_organizations'] }}</p>
                     </div>
                     <span class="material-symbols-outlined" style="font-size: 32px; opacity: 0.5;">groups</span>
                 </div>
@@ -97,7 +97,7 @@
                     <thead>
                         <tr style="border-bottom: 1px solid #e5e7eb;">
                             <th style="text-align: left; padding: 8px 0; font-size: 11px; font-weight: 600; color: #6b7280;">Project</th>
-                            <th style="text-align: left; padding: 8px 0; font-size: 11px; font-weight: 600; color: #6b7280;">Client</th>
+                            <th style="text-align: left; padding: 8px 0; font-size: 11px; font-weight: 600; color: #6b7280;">Organization</th>
                             @if(!($isClient ?? false))
                             <th style="text-align: right; padding: 8px 0; font-size: 11px; font-weight: 600; color: #6b7280;">Value (RM)</th>
                             @endif
@@ -108,7 +108,7 @@
                         @foreach($topProjects as $project)
                         <tr style="border-bottom: 1px solid #f3f4f6;">
                             <td style="padding: 10px 0;"><span style="font-size: 11px; font-weight: 500; color: #111827;">{{ $project->name }}</span></td>
-                            <td style="padding: 10px 0;"><span style="font-size: 11px; color: #6b7280;">{{ $project->client?->name ?? '-' }}</span></td>
+                            <td style="padding: 10px 0;"><span style="font-size: 11px; color: #6b7280;">{{ $project->organization?->name ?? '-' }}</span></td>
                             @if(!($isClient ?? false))
                             <td style="padding: 10px 0; text-align: right;"><span style="font-size: 11px; font-weight: 600; color: #111827;">{{ number_format($project->project_value, 2) }}</span></td>
                             @endif
@@ -151,10 +151,10 @@
             </div>
         </div>
 
-        <!-- Row 3: Project Value by Client + Top Vendors -->
+        <!-- Row 3: Project Value by Organization + Top Vendors -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
             <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; border: 1px solid #f3f4f6;">
-                <h3 style="font-size: 13px; font-weight: 600; color: #111827; margin: 0 0 16px 0;">Project Value by Client</h3>
+                <h3 style="font-size: 13px; font-weight: 600; color: #111827; margin: 0 0 16px 0;">Project Value by Organization</h3>
                 <div style="height: 200px;"><canvas id="clientValueChart"></canvas></div>
             </div>
             <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; border: 1px solid #f3f4f6;">
@@ -295,7 +295,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Project Value by Client Horizontal Bar
+    // Project Value by Organization Horizontal Bar
     new Chart(document.getElementById('clientValueChart'), {
         type: 'bar',
         data: {

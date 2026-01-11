@@ -17,6 +17,13 @@
     <!-- Tabs Navigation -->
     <div class="border-t border-gray-200">
         <nav class="flex px-6" aria-label="Tabs">
+            @permission('external_settings_organization.view')
+            <a href="{{ route('external.settings.index', ['tab' => 'organizations']) }}"
+               class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'organizations' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
+               style="font-family: Poppins, sans-serif;">
+                Organization
+            </a>
+            @endpermission
             @permission('external_settings_client.view')
             <a href="{{ route('external.settings.index', ['tab' => 'clients']) }}"
                class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'clients' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
@@ -69,7 +76,9 @@
             </div>
         @endif
 
-        @if($activeTab === 'clients')
+        @if($activeTab === 'organizations')
+            @include('external.settings.partials.organizations')
+        @elseif($activeTab === 'clients')
             @include('external.settings.partials.clients')
         @elseif($activeTab === 'vendors')
             @include('external.settings.partials.vendors')
@@ -149,6 +158,15 @@ function editCategory(id, data, fields) {
 
 function deleteCategory(id) {
     window.showDeleteModal('{{ route("external.settings.index") }}/categories/' + id);
+}
+
+// Organization functions
+function editOrganization(id, data) {
+    window.dispatchEvent(new CustomEvent('edit-organization', { detail: { id: id, data: data } }));
+}
+
+function deleteOrganization(id) {
+    window.showDeleteModal('{{ route("external.settings.index") }}/organizations/' + id);
 }
 </script>
 @endpush

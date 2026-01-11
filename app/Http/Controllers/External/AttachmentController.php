@@ -9,7 +9,7 @@ use App\Models\IntegrationSetting;
 use App\Models\Project;
 use App\Services\ActivityLogService;
 use App\Services\AttachmentService;
-use App\Traits\ClientIsolation;
+use App\Traits\ProjectAccess;
 use Aws\S3\S3Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Storage;
 
 class AttachmentController extends Controller
 {
-    use ClientIsolation;
+    use ProjectAccess;
 
     protected AttachmentService $attachmentService;
 
@@ -28,27 +28,28 @@ class AttachmentController extends Controller
 
     public function index(Request $request)
     {
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         
         $query = Attachment::with(['attachable', 'uploader'])
             ->orderByDesc('created_at');
 
-        // Client isolation - only show attachments from client's projects/assets
-        if ($client) {
-            $clientProjectIds = Project::where('client_id', $client->id)->pluck('id')->toArray();
-            $clientAssetIds = Asset::whereIn('project_id', $clientProjectIds)->pluck('id')->toArray();
+        // Get accessible project IDs
+        $projectIds = $this->getAccessibleProjectIds();
+        
+        // Apply project access filter for client users
+        if ($projectIds !== null) {
+            $assetIds = Asset::whereIn('project_id', $projectIds)->pluck('id')->toArray();
             
-            $query->where(function($q) use ($clientProjectIds, $clientAssetIds) {
+            $query->where(function($q) use ($projectIds, $assetIds) {
                 // Project attachments
-                $q->where(function($q2) use ($clientProjectIds) {
+                $q->where(function($q2) use ($projectIds) {
                     $q2->where('attachable_type', 'App\Models\Project')
-                       ->whereIn('attachable_id', $clientProjectIds);
+                       ->whereIn('attachable_id', $projectIds);
                 })
                 // Asset attachments
-                ->orWhere(function($q2) use ($clientAssetIds) {
+                ->orWhere(function($q2) use ($assetIds) {
                     $q2->where('attachable_type', 'App\Models\Asset')
-                       ->whereIn('attachable_id', $clientAssetIds);
+                       ->whereIn('attachable_id', $assetIds);
                 });
             });
         }
@@ -62,13 +63,12 @@ class AttachmentController extends Controller
         // Project filter
         if ($request->filled('project_id')) {
             $projectId = $request->project_id;
-            // Verify client can access this project
-            if ($client) {
-                $project = Project::find($projectId);
-                if (!$project || $project->client_id !== $client->id) {
-                    $projectId = null; // Invalid project, ignore filter
-                }
+            
+            // Verify user can access this project
+            if ($projectIds !== null && !in_array($projectId, $projectIds)) {
+                $projectId = null; // Invalid project, ignore filter
             }
+            
             if ($projectId) {
                 $query->where(function($q) use ($projectId) {
                     // Project attachments
@@ -100,30 +100,29 @@ class AttachmentController extends Controller
 
         $attachments = $query->paginate(\App\Models\SystemSetting::paginationSize())->withQueryString();
         
-        // Client isolation for project dropdown
-        if ($client) {
-            $projects = Project::where('client_id', $client->id)->orderBy('name')->get();
-        } else {
-            $projects = Project::orderBy('name')->get();
-        }
+        // Get accessible projects for dropdown
+        $projects = $this->getAccessibleProjects();
+
+        // For backward compatibility
+        $client = $this->getClientForUser();
 
         return view('external.attachments.index', compact('attachments', 'projects', 'client', 'isStaff'));
     }
 
     public function download(Attachment $attachment)
     {
-        $client = $this->getClientForUser();
+        // Get accessible project IDs
+        $projectIds = $this->getAccessibleProjectIds();
         
-        // Client isolation - verify attachment belongs to client's project/asset
-        if ($client) {
+        // Verify user can access this attachment
+        if ($projectIds !== null) {
             $canAccess = false;
             
             if ($attachment->attachable_type === 'App\Models\Project') {
-                $project = Project::find($attachment->attachable_id);
-                $canAccess = $project && $project->client_id === $client->id;
+                $canAccess = in_array($attachment->attachable_id, $projectIds);
             } elseif ($attachment->attachable_type === 'App\Models\Asset') {
-                $asset = Asset::with('project')->find($attachment->attachable_id);
-                $canAccess = $asset && $asset->project && $asset->project->client_id === $client->id;
+                $asset = Asset::find($attachment->attachable_id);
+                $canAccess = $asset && in_array($asset->project_id, $projectIds);
             }
             
             if (!$canAccess) {
@@ -223,18 +222,18 @@ class AttachmentController extends Controller
 
     public function destroy(Attachment $attachment)
     {
-        $client = $this->getClientForUser();
+        // Get accessible project IDs
+        $projectIds = $this->getAccessibleProjectIds();
         
-        // Client isolation - verify attachment belongs to client's project/asset
-        if ($client) {
+        // Verify user can access this attachment
+        if ($projectIds !== null) {
             $canAccess = false;
             
             if ($attachment->attachable_type === 'App\Models\Project') {
-                $project = Project::find($attachment->attachable_id);
-                $canAccess = $project && $project->client_id === $client->id;
+                $canAccess = in_array($attachment->attachable_id, $projectIds);
             } elseif ($attachment->attachable_type === 'App\Models\Asset') {
-                $asset = Asset::with('project')->find($attachment->attachable_id);
-                $canAccess = $asset && $asset->project && $asset->project->client_id === $client->id;
+                $asset = Asset::find($attachment->attachable_id);
+                $canAccess = $asset && in_array($asset->project_id, $projectIds);
             }
             
             if (!$canAccess) {

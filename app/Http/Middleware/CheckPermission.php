@@ -33,6 +33,12 @@ class CheckPermission
             return $next($request);
         }
         
+        // Client users (role "Client") have implicit access to helpdesk tickets and reports
+        // Data isolation is handled at the controller level via project access
+        if ($this->isClientUserWithImplicitAccess($user, $module, $action)) {
+            return $next($request);
+        }
+        
         $permission = "{$module}.{$action}";
         
         // Check if user has the specific permission
@@ -60,6 +66,33 @@ class CheckPermission
         }
         
         return $next($request);
+    }
+    
+    /**
+     * Check if user is a client user with implicit access to certain modules
+     * Client users have automatic access to helpdesk tickets and reports
+     * Data isolation is handled at the controller level
+     */
+    protected function isClientUserWithImplicitAccess($user, string $module, string $action): bool
+    {
+        // Only applies to users with "Client" role
+        if (!$user->role || $user->role->name !== 'Client') {
+            return false;
+        }
+        
+        // Client users have implicit view access to helpdesk and its sub-modules
+        // They can view tickets, reports, and create tickets for their projects
+        $clientAllowedModules = [
+            'helpdesk' => ['view'],
+            'helpdesk_tickets' => ['view', 'create'],
+            'helpdesk_reports' => ['view'],
+        ];
+        
+        if (isset($clientAllowedModules[$module])) {
+            return in_array($action, $clientAllowedModules[$module]);
+        }
+        
+        return false;
     }
     
     /**

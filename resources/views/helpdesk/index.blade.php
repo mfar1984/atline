@@ -19,6 +19,17 @@
             </p>
         </div>
         @if($activeTab === 'tickets')
+        {{-- Client users can always create tickets for their projects --}}
+        @if($isClient)
+        <div class="flex items-center gap-2">
+            <button type="button" onclick="showCreateModal()"
+               class="inline-flex items-center gap-2 px-3 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition"
+               style="min-height: 32px;">
+                <span class="material-symbols-outlined" style="font-size: 14px;">add_circle</span>
+                NEW TICKET
+            </button>
+        </div>
+        @else
         @permission('helpdesk_tickets.create')
         <div class="flex items-center gap-2">
             <button type="button" onclick="showCreateModal()"
@@ -30,12 +41,20 @@
         </div>
         @endpermission
         @endif
+        @endif
     </div>
 
     <!-- Tabs Navigation -->
-    @if(!$client)
     <div class="border-t border-gray-200">
         <nav class="flex px-6" aria-label="Tabs">
+            {{-- Client users always see Tickets tab (data is isolated by project access) --}}
+            @if($isClient)
+            <a href="{{ route('helpdesk.index', ['tab' => 'tickets']) }}"
+               class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'tickets' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
+               style="font-family: Poppins, sans-serif;">
+                Tickets
+            </a>
+            @else
             @permission('helpdesk_tickets.view')
             <a href="{{ route('helpdesk.index', ['tab' => 'tickets']) }}"
                class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'tickets' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
@@ -43,6 +62,8 @@
                 Tickets
             </a>
             @endpermission
+            @endif
+            @if(!$isClient)
             @permission('helpdesk_templates.view')
             <a href="{{ route('helpdesk.index', ['tab' => 'templates']) }}"
                class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'templates' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
@@ -71,6 +92,15 @@
                 Statuses
             </a>
             @endpermission
+            @endif
+            {{-- Client users always see Reports tab (data is isolated by project access) --}}
+            @if($isClient)
+            <a href="{{ route('helpdesk.index', ['tab' => 'reports']) }}"
+               class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'reports' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
+               style="font-family: Poppins, sans-serif;">
+                Reports
+            </a>
+            @else
             @permission('helpdesk_reports.view')
             <a href="{{ route('helpdesk.index', ['tab' => 'reports']) }}"
                class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'reports' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
@@ -78,9 +108,9 @@
                 Reports
             </a>
             @endpermission
+            @endif
         </nav>
     </div>
-    @endif
 
     <!-- Tab Content -->
     <div class="px-6 py-4 pb-6 border-t border-gray-200" style="overflow: hidden; min-width: 0;">
@@ -96,7 +126,7 @@
             </div>
         @endif
 
-        @if($activeTab === 'tickets' || $client)
+        @if($activeTab === 'tickets')
             @include('helpdesk.partials.tickets')
         @elseif($activeTab === 'templates')
             @include('helpdesk.partials.templates')

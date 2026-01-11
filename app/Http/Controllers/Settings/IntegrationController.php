@@ -20,9 +20,52 @@ class IntegrationController extends Controller
 
     public function index(Request $request)
     {
-        $activeTab = $request->get('tab', 'recycle-bin');
+        $user = auth()->user();
+        
+        // Define tabs with their permissions in order
+        $tabPermissions = [
+            'recycle-bin' => 'settings_integrations_recycle_bin.view',
+            'email' => 'settings_integrations_email.view',
+            'telegram' => 'settings_integrations_telegram.view',
+            'payment' => 'settings_integrations_payment.view',
+            'storage' => 'settings_integrations_storage.view',
+            'weather' => 'settings_integrations_weather.view',
+            'webhooks' => 'settings_integrations_webhook.view',
+        ];
+
+        // Get requested tab or find first accessible tab
+        $requestedTab = $request->get('tab');
+        $activeTab = null;
+
+        if ($requestedTab && isset($tabPermissions[$requestedTab])) {
+            // Check if user has permission for requested tab
+            if ($user->hasPermission($tabPermissions[$requestedTab])) {
+                $activeTab = $requestedTab;
+            }
+        }
+
+        // If no valid tab yet, find first accessible tab
+        if (!$activeTab) {
+            foreach ($tabPermissions as $tab => $permission) {
+                if ($user->hasPermission($permission)) {
+                    $activeTab = $tab;
+                    break;
+                }
+            }
+        }
+
+        // If user has no permission for any tab, deny access
+        if (!$activeTab) {
+            abort(403, 'You do not have permission to access any integrations.');
+        }
+
+        // If requested tab differs from active tab (no permission), redirect
+        if ($requestedTab && $requestedTab !== $activeTab) {
+            return redirect()->route('settings.integrations.index', ['tab' => $activeTab]);
+        }
         
         $emailSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_EMAIL);
+        $telegramSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_TELEGRAM);
         $paymentSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_PAYMENT);
         $storageSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_STORAGE);
         $weatherSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_WEATHER);
@@ -51,6 +94,7 @@ class IntegrationController extends Controller
         return view('settings.integrations.index', compact(
             'activeTab',
             'emailSetting',
+            'telegramSetting',
             'paymentSetting',
             'storageSetting',
             'weatherSetting',
@@ -264,6 +308,95 @@ class IntegrationController extends Controller
             $setting->save();
             
             return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+    public function updateTelegram(Request $request)
+    {
+        $request->validate([
+            'bot_token' => 'nullable',
+            'channel_id' => 'required',
+            'bot_username' => 'nullable',
+            'owner_username' => 'nullable',
+            'owner_user_id' => 'nullable',
+        ]);
+
+        $setting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_TELEGRAM);
+        
+        $credentials = $setting->getDecryptedCredentials();
+        $credentials['channel_id'] = $request->channel_id;
+        $credentials['bot_username'] = $request->bot_username;
+        $credentials['owner_username'] = $request->owner_username;
+        $credentials['owner_user_id'] = $request->owner_user_id;
+        
+        if ($request->filled('bot_token')) {
+            $credentials['bot_token'] = $request->bot_token;
+        }
+        
+        $setting->provider = 'telegram';
+        $setting->setEncryptedCredentials($credentials);
+        $setting->is_active = !empty($credentials['bot_token']) && !empty($request->channel_id);
+        $setting->save();
+
+        try {
+            ActivityLogService::logSettingsUpdate('telegram_integration', [
+                'channel_id' => $request->channel_id,
+                'bot_username' => $request->bot_username,
+            ]);
+        } catch (\Exception $e) {
+            // Silent fail - don't interrupt main operation
+        }
+
+        return redirect()->route('settings.integrations.index', ['tab' => 'telegram'])
+            ->with('success', 'Telegram settings saved successfully.');
+    }
+
+    public function testTelegram(Request $request)
+    {
+        $request->validate([
+            'message' => 'required|string|max:4096',
+        ]);
+        
+        $setting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_TELEGRAM);
+        $credentials = $setting->getDecryptedCredentials();
+        
+        if (empty($credentials['bot_token']) || empty($credentials['channel_id'])) {
+            return response()->json(['success' => false, 'message' => 'Telegram not configured. Please save Bot Token and Channel ID first.']);
+        }
+
+        try {
+            $botToken = $credentials['bot_token'];
+            $channelId = $credentials['channel_id'];
+            $message = $request->message;
+            
+            $response = Http::post("https://api.telegram.org/bot{$botToken}/sendMessage", [
+                'chat_id' => $channelId,
+                'text' => $message,
+                'parse_mode' => 'HTML',
+            ]);
+            
+            if ($response->successful()) {
+                $data = $response->json();
+                if (isset($data['ok']) && $data['ok'] === true) {
+                    $setting->last_tested_at = now();
+                    $setting->last_test_status = 'success';
+                    $setting->save();
+                    
+                    return response()->json([
+                        'success' => true, 
+                        'message' => 'Test message sent successfully to your Telegram channel.'
+                    ]);
+                }
+            }
+            
+            $errorMessage = $response->json()['description'] ?? 'Unknown error';
+            throw new \Exception($errorMessage);
+        } catch (\Exception $e) {
+            $setting->last_tested_at = now();
+            $setting->last_test_status = 'failed';
+            $setting->save();
+            
+            return response()->json(['success' => false, 'message' => 'Telegram Error: ' . $e->getMessage()]);
         }
     }
 
@@ -555,6 +688,24 @@ class IntegrationController extends Controller
             $setting->save();
             return response()->json(['success' => false, 'message' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Receive webhook test (internal endpoint for testing)
+     */
+    public function receiveWebhook(Request $request)
+    {
+        // Log the received webhook for debugging
+        \Illuminate\Support\Facades\Log::info('Webhook received', [
+            'payload' => $request->all(),
+            'headers' => $request->headers->all(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Webhook received successfully',
+            'received_at' => now()->toIso8601String(),
+        ]);
     }
 
     /**

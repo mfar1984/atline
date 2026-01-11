@@ -3,16 +3,18 @@
 namespace App\Http\Controllers\External;
 
 use App\Http\Controllers\Controller;
-use App\Models\Client;
+use App\Models\Organization;
 use App\Models\Project;
+use App\Models\User;
 use App\Services\ActivityLogService;
 use App\Services\AttachmentService;
-use App\Traits\ClientIsolation;
+use App\Traits\ProjectAccess;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class ProjectController extends Controller
 {
-    use ClientIsolation;
+    use ProjectAccess;
 
     protected AttachmentService $attachmentService;
 
@@ -23,23 +25,20 @@ class ProjectController extends Controller
 
     public function index(Request $request)
     {
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         $isClient = !$isStaff;
         
-        $query = Project::with('client');
+        $query = Project::with(['organization', 'users']);
 
-        // Client isolation - clients only see their own projects
-        if ($client) {
-            $query->where('client_id', $client->id);
-        }
+        // Apply project access filter for client users
+        $this->applyProjectAccessFilter($query);
 
         // Search filter
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhereHas('client', function($q) use ($search) {
+                  ->orWhereHas('organization', function($q) use ($search) {
                       $q->where('name', 'like', "%{$search}%");
                   });
             });
@@ -50,34 +49,56 @@ class ProjectController extends Controller
             $query->where('status', $request->status);
         }
 
+        // Organization filter (staff only)
+        if ($isStaff && $request->filled('organization_id')) {
+            $query->where('organization_id', $request->organization_id);
+        }
+
         $projects = $query->withCount('assets')->latest()->paginate(\App\Models\SystemSetting::paginationSize());
 
-        return view('external.projects.index', compact('projects', 'client', 'isStaff', 'isClient'));
+        // Get organizations for filter dropdown (staff only)
+        $organizations = $isStaff ? Organization::active()->orderBy('name')->get() : collect();
+
+        // For backward compatibility with views
+        $client = $this->getClientForUser();
+
+        return view('external.projects.index', compact('projects', 'organizations', 'client', 'isStaff', 'isClient'));
     }
 
     public function create()
     {
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         
-        // If client user, they can only create projects for themselves
-        if ($client) {
-            $clients = collect([$client]);
-        } else {
-            $clients = Client::active()->orderBy('name')->get();
+        // Only staff can create projects
+        if (!$isStaff) {
+            abort(403, 'You do not have permission to create projects.');
         }
         
-        return view('external.projects.create', compact('clients', 'client', 'isStaff'));
+        $organizations = Organization::active()->orderBy('name')->get();
+        
+        // Get client users for assignment
+        $clientUsers = User::whereHas('role', function($q) {
+            $q->where('name', 'Client');
+        })->where('is_active', true)->orderBy('name')->get();
+
+        // For backward compatibility
+        $client = null;
+        $clients = collect(); // Legacy - not used anymore
+
+        return view('external.projects.create', compact('organizations', 'clientUsers', 'client', 'clients', 'isStaff'));
     }
 
     public function store(Request $request)
     {
-        $client = $this->getClientForUser();
+        // Only staff can create projects
+        if (!$this->isStaff()) {
+            abort(403, 'You do not have permission to create projects.');
+        }
         
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'client_id' => $client ? 'nullable' : 'nullable|exists:clients,id',
+            'organization_id' => 'nullable|exists:organizations,id',
             'project_value' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
@@ -86,14 +107,28 @@ class ProjectController extends Controller
             'po_number' => 'nullable|string|max:100',
             'warranty_period' => 'nullable|string|max:50',
             'warranty_expiry' => 'nullable|date',
+            'user_ids' => 'nullable|array',
+            'user_ids.*' => 'exists:users,id',
         ]);
 
-        // Force client_id for client users
-        if ($client) {
-            $validated['client_id'] = $client->id;
-        }
+        $project = Project::create([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'organization_id' => $validated['organization_id'] ?? null,
+            'project_value' => $validated['project_value'] ?? null,
+            'start_date' => $validated['start_date'] ?? null,
+            'end_date' => $validated['end_date'] ?? null,
+            'status' => $validated['status'] ?? 'active',
+            'purchase_date' => $validated['purchase_date'] ?? null,
+            'po_number' => $validated['po_number'] ?? null,
+            'warranty_period' => $validated['warranty_period'] ?? null,
+            'warranty_expiry' => $validated['warranty_expiry'] ?? null,
+        ]);
 
-        $project = Project::create($validated);
+        // Assign users to project
+        if (!empty($validated['user_ids'])) {
+            $project->users()->sync($validated['user_ids']);
+        }
 
         // Log project creation
         try {
@@ -116,15 +151,15 @@ class ProjectController extends Controller
 
     public function show(Project $project)
     {
-        $client = $this->getClientForUser();
-        $isClient = !$this->isStaff();
+        $isStaff = $this->isStaff();
+        $isClient = !$isStaff;
         
-        // Client isolation - clients can only view their own projects
-        if ($client && $project->client_id !== $client->id) {
+        // Check access
+        if (!$this->canAccessProject($project)) {
             abort(403, 'You do not have permission to view this project.');
         }
         
-        $project->load(['assets.category', 'assets.brand', 'attachments', 'client']);
+        $project->load(['assets.category', 'assets.brand', 'attachments', 'organization', 'users']);
         
         // Log view activity
         try {
@@ -132,45 +167,59 @@ class ProjectController extends Controller
         } catch (\Exception $e) {
             \Log::error('Activity logging failed: ' . $e->getMessage());
         }
+
+        // For backward compatibility
+        $client = $this->getClientForUser();
         
         return view('external.projects.show', compact('project', 'client', 'isClient'));
     }
 
     public function edit(Project $project)
     {
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         
-        // Client isolation - clients can only edit their own projects
-        if ($client && $project->client_id !== $client->id) {
+        // Check access
+        if (!$this->canAccessProject($project)) {
             abort(403, 'You do not have permission to edit this project.');
         }
         
-        $project->load('attachments');
-        
-        // If client user, they can only see themselves in the dropdown
-        if ($client) {
-            $clients = collect([$client]);
-        } else {
-            $clients = Client::active()->orderBy('name')->get();
+        // Only staff can edit projects
+        if (!$isStaff) {
+            abort(403, 'You do not have permission to edit projects.');
         }
         
-        return view('external.projects.edit', compact('project', 'clients', 'client', 'isStaff'));
+        $project->load(['attachments', 'users']);
+        
+        $organizations = Organization::active()->orderBy('name')->get();
+        
+        // Get client users for assignment
+        $clientUsers = User::whereHas('role', function($q) {
+            $q->where('name', 'Client');
+        })->where('is_active', true)->orderBy('name')->get();
+
+        // For backward compatibility
+        $client = null;
+        $clients = collect();
+        
+        return view('external.projects.edit', compact('project', 'organizations', 'clientUsers', 'client', 'clients', 'isStaff'));
     }
 
     public function update(Request $request, Project $project)
     {
-        $client = $this->getClientForUser();
-        
-        // Client isolation - clients can only update their own projects
-        if ($client && $project->client_id !== $client->id) {
+        // Check access
+        if (!$this->canAccessProject($project)) {
             abort(403, 'You do not have permission to update this project.');
+        }
+        
+        // Only staff can update projects
+        if (!$this->isStaff()) {
+            abort(403, 'You do not have permission to update projects.');
         }
         
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'client_id' => $client ? 'nullable' : 'nullable|exists:clients,id',
+            'organization_id' => 'nullable|exists:organizations,id',
             'project_value' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
@@ -179,15 +228,28 @@ class ProjectController extends Controller
             'po_number' => 'nullable|string|max:100',
             'warranty_period' => 'nullable|string|max:50',
             'warranty_expiry' => 'nullable|date',
+            'user_ids' => 'nullable|array',
+            'user_ids.*' => 'exists:users,id',
         ]);
 
-        // Force client_id for client users (prevent changing to another client)
-        if ($client) {
-            $validated['client_id'] = $client->id;
-        }
-
         $oldValues = $project->only(['name', 'description', 'status', 'project_value']);
-        $project->update($validated);
+        
+        $project->update([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'organization_id' => $validated['organization_id'] ?? null,
+            'project_value' => $validated['project_value'] ?? null,
+            'start_date' => $validated['start_date'] ?? null,
+            'end_date' => $validated['end_date'] ?? null,
+            'status' => $validated['status'] ?? 'active',
+            'purchase_date' => $validated['purchase_date'] ?? null,
+            'po_number' => $validated['po_number'] ?? null,
+            'warranty_period' => $validated['warranty_period'] ?? null,
+            'warranty_expiry' => $validated['warranty_expiry'] ?? null,
+        ]);
+
+        // Sync users
+        $project->users()->sync($validated['user_ids'] ?? []);
         
         // Log update activity
         try {
@@ -210,11 +272,14 @@ class ProjectController extends Controller
 
     public function destroy(Project $project)
     {
-        $client = $this->getClientForUser();
-        
-        // Client isolation - clients can only delete their own projects
-        if ($client && $project->client_id !== $client->id) {
+        // Check access
+        if (!$this->canAccessProject($project)) {
             abort(403, 'You do not have permission to delete this project.');
+        }
+        
+        // Only staff can delete projects
+        if (!$this->isStaff()) {
+            abort(403, 'You do not have permission to delete projects.');
         }
         
         // Check if project has linked assets
@@ -234,6 +299,9 @@ class ProjectController extends Controller
         foreach ($project->attachments as $attachment) {
             $this->attachmentService->delete($attachment);
         }
+
+        // Detach all users
+        $project->users()->detach();
 
         $project->delete();
 

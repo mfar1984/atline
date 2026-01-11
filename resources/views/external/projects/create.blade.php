@@ -49,13 +49,13 @@
                             @enderror
                         </div>
                         <div>
-                            <label class="block text-gray-700 mb-1" style="font-size: 11px; font-family: Poppins, sans-serif;">Client</label>
-                            <select name="client_id"
+                            <label class="block text-gray-700 mb-1" style="font-size: 11px; font-family: Poppins, sans-serif;">Organization</label>
+                            <select name="organization_id"
                                     class="w-full px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500" 
                                     style="font-family: Poppins, sans-serif; min-height: 32px; font-size: 11px;">
-                                <option value="">Select Client</option>
-                                @foreach($clients as $client)
-                                    <option value="{{ $client->id }}" {{ old('client_id') == $client->id ? 'selected' : '' }}>{{ $client->name }}</option>
+                                <option value="">Select Organization</option>
+                                @foreach($organizations as $organization)
+                                    <option value="{{ $organization->id }}" {{ old('organization_id') == $organization->id ? 'selected' : '' }}>{{ $organization->name }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -110,6 +110,31 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Assign Users Section -->
+            @if(isset($clientUsers) && $clientUsers->count() > 0)
+            <div class="mt-6 border border-gray-200 rounded">
+                <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <h3 class="text-xs font-semibold text-gray-900" style="font-family: Poppins, sans-serif;">Assign Client Users</h3>
+                    <p class="text-xs text-gray-500 mt-0.5" style="font-size: 10px;">Select users who can access this project</p>
+                </div>
+                <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        @foreach($clientUsers as $user)
+                        <label class="flex items-center p-3 border border-gray-200 rounded hover:bg-gray-50 cursor-pointer">
+                            <input type="checkbox" name="user_ids[]" value="{{ $user->id }}" 
+                                   class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                   {{ in_array($user->id, old('user_ids', [])) ? 'checked' : '' }}>
+                            <div class="ml-3">
+                                <span class="text-xs font-medium text-gray-900" style="font-family: Poppins, sans-serif;">{{ $user->name }}</span>
+                                <span class="block text-xs text-gray-500" style="font-size: 10px;">{{ $user->email }}</span>
+                            </div>
+                        </label>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+            @endif
 
             <!-- Procurement & Warranty -->
             <div class="mt-6 border border-gray-200 rounded">
@@ -237,14 +262,12 @@ function fileAttachments() {
         updateFileInfo(event, index) {
             const file = event.target.files[0];
             if (file) {
-                // Check file size (15MB = 15 * 1024 * 1024 bytes)
                 if (file.size > 15 * 1024 * 1024) {
                     alert('File size exceeds 15MB limit');
                     event.target.value = '';
                     return;
                 }
                 
-                // Format file size
                 const sizes = ['Bytes', 'KB', 'MB', 'GB'];
                 if (file.size === 0) {
                     this.files[index].size = '0 Byte';

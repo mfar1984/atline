@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\SendTelegramNotificationJob;
 use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Models\Employee;
@@ -93,8 +94,9 @@ class ActivityLogService
         ?array $properties = null
     ): ActivityLog {
         $userContext = self::getUserContext();
+        $user = Auth::user();
 
-        return ActivityLog::create([
+        $activityLog = ActivityLog::create([
             'user_id' => Auth::id(),
             'client_id' => $userContext['client_id'],
             'employee_id' => $userContext['employee_id'],
@@ -107,6 +109,61 @@ class ActivityLogService
             'ip_address' => Request::ip(),
             'user_agent' => Request::userAgent(),
         ]);
+
+        // Send Telegram notification asynchronously
+        self::dispatchTelegramNotification($activityLog, $user);
+
+        return $activityLog;
+    }
+
+    /**
+     * Actions to exclude from Telegram notifications (too frequent/not critical)
+     */
+    private static array $excludeFromTelegram = [
+        'view',
+    ];
+
+    /**
+     * Dispatch Telegram notification for activity log.
+     */
+    private static function dispatchTelegramNotification(ActivityLog $activityLog, $user): void
+    {
+        // Skip excluded actions (view is too frequent)
+        if (in_array($activityLog->action, self::$excludeFromTelegram)) {
+            return;
+        }
+
+        try {
+            $userName = $user?->name ?? 'System';
+            $userRole = $user?->role?->name ?? '';
+
+            // Determine user type for role display
+            if (!$userRole && $user) {
+                if ($activityLog->client_id) {
+                    $userRole = 'Client';
+                } elseif ($activityLog->employee_id) {
+                    $userRole = 'Employee';
+                }
+            }
+
+            $data = [
+                'action' => $activityLog->action,
+                'module' => $activityLog->module ?? 'System',
+                'description' => $activityLog->description,
+                'user_name' => $userName,
+                'user_role' => $userRole,
+                'ip_address' => $activityLog->ip_address ?? 'Unknown',
+                'timestamp' => $activityLog->created_at->format('d M Y, H:i:s'),
+            ];
+
+            // Dispatch job (will run synchronously if queue is sync)
+            SendTelegramNotificationJob::dispatch($data);
+        } catch (\Exception $e) {
+            // Silent fail - don't interrupt main operation
+            \Illuminate\Support\Facades\Log::warning('Failed to dispatch Telegram notification', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -254,6 +311,57 @@ class ActivityLogService
         return self::log('update', "Updated {$category} settings", 'settings_config', null, [
             'category' => $category,
             'changes' => $changes,
+        ]);
+    }
+
+    /**
+     * Log an upload activity.
+     */
+    public static function logUpload(string $module, string $description, ?array $fileDetails = null): ActivityLog
+    {
+        return self::log('upload', $description, $module, null, [
+            'file' => $fileDetails,
+        ]);
+    }
+
+    /**
+     * Log an assign activity.
+     */
+    public static function logAssign(Model $model, string $module, string $description, ?array $assignDetails = null): ActivityLog
+    {
+        return self::log('assign', $description, $module, $model, [
+            'assignment' => $assignDetails,
+        ]);
+    }
+
+    /**
+     * Log a restore activity.
+     */
+    public static function logRestore(Model $model, string $module, ?string $description = null): ActivityLog
+    {
+        $modelName = class_basename($model);
+        $description = $description ?? "Restored {$modelName}";
+        
+        return self::log('restore', $description, $module, $model, [
+            'attributes' => $model->getAttributes(),
+        ]);
+    }
+
+    /**
+     * Log a chat/message activity.
+     */
+    public static function logChat(Model $model, string $module, string $description): ActivityLog
+    {
+        return self::log('chat', $description, $module, $model);
+    }
+
+    /**
+     * Log a print activity.
+     */
+    public static function logPrint(string $module, string $description, ?array $printDetails = null): ActivityLog
+    {
+        return self::log('print', $description, $module, null, [
+            'print' => $printDetails,
         ]);
     }
 }

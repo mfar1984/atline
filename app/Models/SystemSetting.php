@@ -83,7 +83,7 @@ class SystemSetting extends Model
      */
     public static function clearCache(): void
     {
-        $groups = ['company', 'regional', 'security', 'notification', 'defaults', 'rate_limiter'];
+        $groups = ['company', 'regional', 'security', 'notification', 'defaults', 'rate_limiter', 'branding'];
         
         foreach ($groups as $group) {
             Cache::forget("system_settings.{$group}");
@@ -172,5 +172,26 @@ class SystemSetting extends Model
     public static function guestProtectionLimit(): int
     {
         return static::getValue('rate_limiter', 'guest_protection_limit', 20);
+    }
+    
+    /**
+     * Branding helper methods
+     */
+    public static function iconPath(): string
+    {
+        $path = static::getValue('branding', 'icon', '');
+        return $path ?: '/images/favicon.ico';
+    }
+    
+    public static function logoPath(): string
+    {
+        $path = static::getValue('branding', 'logo', '');
+        return $path ?: '/images/logo.png';
+    }
+    
+    public static function heroImagePath(): string
+    {
+        $path = static::getValue('branding', 'hero_image', '');
+        return $path ?: '/images/hero-bg.png';
     }
 }

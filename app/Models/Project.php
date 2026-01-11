@@ -13,6 +13,7 @@ class Project extends Model
     protected $fillable = [
         'name',
         'description',
+        'organization_id',
         'client_id',
         'client_name', // Keep for backward compatibility
         'project_value',
@@ -34,9 +35,38 @@ class Project extends Model
     ];
 
     // Relationships
+    
+    /**
+     * Get the organization that owns this project
+     */
+    public function organization()
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
+    /**
+     * Get the client (legacy - for backward compatibility)
+     */
     public function client()
     {
         return $this->belongsTo(Client::class);
+    }
+
+    /**
+     * Get all users who have access to this project (many-to-many)
+     */
+    public function users()
+    {
+        return $this->belongsToMany(User::class, 'project_user')
+            ->withTimestamps();
+    }
+
+    /**
+     * Check if a specific user has access to this project
+     */
+    public function hasUser(int $userId): bool
+    {
+        return $this->users()->where('user_id', $userId)->exists();
     }
 
     public function assets()
@@ -74,5 +104,15 @@ class Project extends Model
     {
         return $query->whereNotNull('warranty_expiry')
             ->whereBetween('warranty_expiry', [now(), now()->addDays($days)]);
+    }
+
+    /**
+     * Scope to filter projects accessible by a user
+     */
+    public function scopeAccessibleBy($query, int $userId)
+    {
+        return $query->whereHas('users', function ($q) use ($userId) {
+            $q->where('user_id', $userId);
+        });
     }
 }

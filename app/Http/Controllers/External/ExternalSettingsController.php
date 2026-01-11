@@ -7,32 +7,77 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Client;
 use App\Models\Location;
+use App\Models\Organization;
+use App\Models\Project;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Services\ActivityLogService;
-use App\Traits\ClientIsolation;
+use App\Traits\ProjectAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
 class ExternalSettingsController extends Controller
 {
-    use ClientIsolation;
+    use ProjectAccess;
 
     public function index(Request $request)
     {
         // Client users should not access settings - only staff/admin
-        $client = $this->getClientForUser();
-        if ($client) {
+        if (!$this->isStaff()) {
             abort(403, 'You do not have permission to access settings.');
         }
         
-        $activeTab = $request->get('tab', 'clients');
+        $user = auth()->user();
         $perPage = \App\Models\SystemSetting::paginationSize();
         $search = $request->get('search');
         $status = $request->get('status');
         
+        // Define tabs with their permissions in order
+        $tabPermissions = [
+            'organizations' => 'external_settings_organization.view',
+            'clients' => 'external_settings_client.view',
+            'vendors' => 'external_settings_vendor.view',
+            'locations' => 'external_settings_location.view',
+            'brands' => 'external_settings_brand.view',
+            'categories' => 'external_settings_category.view',
+        ];
+        
+        // Get requested tab or find first accessible tab
+        $requestedTab = $request->get('tab');
+        $activeTab = null;
+        
+        if ($requestedTab && isset($tabPermissions[$requestedTab])) {
+            // Check if user has permission for requested tab
+            if ($user->hasPermission($tabPermissions[$requestedTab])) {
+                $activeTab = $requestedTab;
+            }
+        }
+        
+        // If no valid tab yet, find first accessible tab
+        if (!$activeTab) {
+            foreach ($tabPermissions as $tab => $permission) {
+                if ($user->hasPermission($permission)) {
+                    $activeTab = $tab;
+                    break;
+                }
+            }
+        }
+        
+        // If user has no permission for any tab, deny access
+        if (!$activeTab) {
+            abort(403, 'You do not have permission to access any settings.');
+        }
+        
+        // If requested tab differs from active tab (no permission), redirect
+        if ($requestedTab && $requestedTab !== $activeTab) {
+            return redirect()->route('external.settings.index', ['tab' => $activeTab]);
+        }
+        
         $data = match($activeTab) {
+            'organizations' => [
+                'organizations' => $this->getOrganizations($search, $status, $perPage),
+            ],
             'clients' => [
                 'clients' => $this->getClients($search, $status, $perPage),
                 'roles' => Role::active()->orderBy('name')->get(),
@@ -41,13 +86,29 @@ class ExternalSettingsController extends Controller
             'locations' => ['locations' => $this->getLocations($search, $status, $perPage), 'allLocations' => Location::orderBy('name')->get()],
             'brands' => ['brands' => $this->getBrands($search, $status, $perPage)],
             'categories' => ['categories' => $this->getCategories($search, $status, $perPage)],
-            default => [
-                'clients' => $this->getClients($search, $status, $perPage),
-                'roles' => Role::active()->orderBy('name')->get(),
-            ],
+            default => [],
         };
         
         return view('external.settings.index', array_merge($data, ['activeTab' => $activeTab]));
+    }
+
+    private function getOrganizations($search, $status, $perPage)
+    {
+        $query = Organization::withCount('projects');
+        
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhere('state', 'like', "%{$search}%");
+            });
+        }
+        
+        if ($status !== null && $status !== '') {
+            $query->where('is_active', $status === 'active');
+        }
+        
+        return $query->orderBy('name')->paginate($perPage)->withQueryString();
     }
 
     private function getClients($search, $status, $perPage)
@@ -139,7 +200,89 @@ class ExternalSettingsController extends Controller
         return $query->orderBy('created_at', 'desc')->paginate($perPage)->withQueryString();
     }
 
-    // Client CRUD
+    // ==================== ORGANIZATION CRUD ====================
+
+    public function storeOrganization(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'organization_type' => 'nullable|string|max:50',
+            'address_1' => 'nullable|string|max:255',
+            'address_2' => 'nullable|string|max:255',
+            'postcode' => 'nullable|string|max:10',
+            'district' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'country' => 'nullable|string|max:100',
+            'website' => 'nullable|url|max:255',
+            'phone' => 'nullable|string|max:50',
+            'email' => 'nullable|email|max:255',
+            'contact_person' => 'nullable|string|max:255',
+        ]);
+
+        $validated['is_active'] = true;
+        $organization = Organization::create($validated);
+
+        try {
+            ActivityLogService::logCreate($organization, 'external_settings', "Created organization {$organization->name}");
+        } catch (\Exception $e) {
+            \Log::error('Activity logging failed: ' . $e->getMessage());
+        }
+
+        return redirect()->route('external.settings.index', ['tab' => 'organizations'])
+            ->with('success', 'Organization created successfully.');
+    }
+
+    public function updateOrganization(Request $request, Organization $organization)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'organization_type' => 'nullable|string|max:50',
+            'address_1' => 'nullable|string|max:255',
+            'address_2' => 'nullable|string|max:255',
+            'postcode' => 'nullable|string|max:10',
+            'district' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'country' => 'nullable|string|max:100',
+            'website' => 'nullable|url|max:255',
+            'phone' => 'nullable|string|max:50',
+            'email' => 'nullable|email|max:255',
+            'contact_person' => 'nullable|string|max:255',
+        ]);
+
+        $oldValues = $organization->only(['name', 'organization_type', 'state', 'is_active']);
+        $organization->update($validated);
+
+        try {
+            ActivityLogService::logUpdate($organization, 'external_settings', $oldValues, "Updated organization {$organization->name}");
+        } catch (\Exception $e) {
+            \Log::error('Activity logging failed: ' . $e->getMessage());
+        }
+
+        return redirect()->route('external.settings.index', ['tab' => 'organizations'])
+            ->with('success', 'Organization updated successfully.');
+    }
+
+    public function destroyOrganization(Organization $organization)
+    {
+        if (!$organization->canBeDeleted()) {
+            return redirect()->route('external.settings.index', ['tab' => 'organizations'])
+                ->with('error', 'Cannot delete organization. It has linked projects or tickets.');
+        }
+
+        try {
+            ActivityLogService::logDelete($organization, 'external_settings', "Deleted organization {$organization->name}");
+        } catch (\Exception $e) {
+            \Log::error('Activity logging failed: ' . $e->getMessage());
+        }
+
+        $organization->delete();
+
+        return redirect()->route('external.settings.index', ['tab' => 'organizations'])
+            ->with('success', 'Organization deleted successfully.');
+    }
+
+    // ==================== CLIENT CRUD ====================
+
     public function storeClient(Request $request)
     {
         $validated = $request->validate([
@@ -164,7 +307,6 @@ class ExternalSettingsController extends Controller
         $clientData = collect($validated)->except(['create_account', 'email', 'password', 'role_id', 'client_email'])->toArray();
         $clientData['is_active'] = true;
         
-        // Set client email (separate from user account email)
         if ($request->filled('client_email')) {
             $clientData['email'] = $validated['client_email'];
         }
@@ -183,7 +325,6 @@ class ExternalSettingsController extends Controller
 
         Client::create($clientData);
 
-        // Log client creation
         try {
             $createdClient = Client::latest()->first();
             ActivityLogService::logCreate($createdClient, 'external_settings', "Created client {$validated['name']}");
@@ -197,12 +338,6 @@ class ExternalSettingsController extends Controller
 
     public function updateClient(Request $request, Client $client)
     {
-        \Log::info('updateClient called', [
-            'client_id' => $client->id,
-            'request_data' => $request->all(),
-        ]);
-        
-        // Build email validation rule - exclude existing user's email if client has account
         $emailRule = 'nullable|email|max:255';
         if ($client->user_id) {
             $emailRule .= '|unique:users,email,' . $client->user_id;
@@ -231,11 +366,9 @@ class ExternalSettingsController extends Controller
 
         $clientData = collect($validated)->except(['create_account', 'email', 'password', 'role_id', 'client_email'])->toArray();
         
-        // Set client email (separate from user account email)
         if ($request->filled('client_email')) {
             $clientData['email'] = $validated['client_email'];
         } elseif ($request->has('client_email')) {
-            // If field is present but empty, clear the email
             $clientData['email'] = null;
         }
 
@@ -254,7 +387,6 @@ class ExternalSettingsController extends Controller
         $oldValues = $client->only(['name', 'organization_type', 'state', 'is_active']);
         $client->update($clientData);
         
-        // Log client update
         try {
             ActivityLogService::logUpdate($client, 'external_settings', $oldValues, "Updated client {$client->name}");
         } catch (\Exception $e) {
@@ -272,7 +404,6 @@ class ExternalSettingsController extends Controller
                 ->with('error', 'Cannot delete client. It is linked to projects.');
         }
 
-        // Log client deletion before deleting
         try {
             ActivityLogService::logDelete($client, 'external_settings', "Deleted client {$client->name}");
         } catch (\Exception $e) {
@@ -285,7 +416,8 @@ class ExternalSettingsController extends Controller
             ->with('success', 'Client deleted successfully.');
     }
 
-    // Vendor CRUD
+    // ==================== VENDOR CRUD ====================
+
     public function storeVendor(Request $request)
     {
         $validated = $request->validate([
@@ -308,7 +440,6 @@ class ExternalSettingsController extends Controller
         $validated['is_active'] = true;
         $vendor = Vendor::create($validated);
         
-        // Log vendor creation
         try {
             ActivityLogService::logCreate($vendor, 'external_settings', "Created vendor {$vendor->name}");
         } catch (\Exception $e) {
@@ -341,7 +472,6 @@ class ExternalSettingsController extends Controller
         $oldValues = $vendor->only(['name', 'organization_type', 'state']);
         $vendor->update($validated);
         
-        // Log vendor update
         try {
             ActivityLogService::logUpdate($vendor, 'external_settings', $oldValues, "Updated vendor {$vendor->name}");
         } catch (\Exception $e) {
@@ -359,7 +489,6 @@ class ExternalSettingsController extends Controller
                 ->with('error', 'Cannot delete vendor. It is linked to assets.');
         }
 
-        // Log vendor deletion before deleting
         try {
             ActivityLogService::logDelete($vendor, 'external_settings', "Deleted vendor {$vendor->name}");
         } catch (\Exception $e) {
@@ -372,7 +501,8 @@ class ExternalSettingsController extends Controller
             ->with('success', 'Vendor deleted successfully.');
     }
 
-    // Location CRUD
+    // ==================== LOCATION CRUD ====================
+
     public function storeLocation(Request $request)
     {
         $validated = $request->validate([
@@ -381,7 +511,6 @@ class ExternalSettingsController extends Controller
             'parent_id' => 'nullable|exists:locations,id',
         ]);
 
-        // Set default type if not provided
         if (empty($validated['type'])) {
             $validated['type'] = 'site';
         }
@@ -389,7 +518,6 @@ class ExternalSettingsController extends Controller
         $validated['is_active'] = true;
         $location = Location::create($validated);
         
-        // Log location creation
         try {
             ActivityLogService::logCreate($location, 'external_settings', "Created location {$location->name}");
         } catch (\Exception $e) {
@@ -408,7 +536,6 @@ class ExternalSettingsController extends Controller
             'parent_id' => 'nullable|exists:locations,id',
         ]);
 
-        // Build update data - keep existing type if not provided
         $updateData = ['name' => $validated['name']];
         
         if ($request->has('type') && !empty($validated['type'])) {
@@ -422,7 +549,6 @@ class ExternalSettingsController extends Controller
         $oldValues = $location->only(['name', 'type']);
         $location->update($updateData);
         
-        // Log location update
         try {
             ActivityLogService::logUpdate($location, 'external_settings', $oldValues, "Updated location {$location->name}");
         } catch (\Exception $e) {
@@ -440,7 +566,6 @@ class ExternalSettingsController extends Controller
                 ->with('error', 'Cannot delete location. It has child locations or linked assets.');
         }
 
-        // Log location deletion before deleting
         try {
             ActivityLogService::logDelete($location, 'external_settings', "Deleted location {$location->name}");
         } catch (\Exception $e) {
@@ -453,7 +578,8 @@ class ExternalSettingsController extends Controller
             ->with('success', 'Location deleted successfully.');
     }
 
-    // Brand CRUD
+    // ==================== BRAND CRUD ====================
+
     public function storeBrand(Request $request)
     {
         $validated = $request->validate([
@@ -463,7 +589,6 @@ class ExternalSettingsController extends Controller
         $validated['is_active'] = true;
         $brand = Brand::create($validated);
         
-        // Log brand creation
         try {
             ActivityLogService::logCreate($brand, 'external_settings', "Created brand {$brand->name}");
         } catch (\Exception $e) {
@@ -483,7 +608,6 @@ class ExternalSettingsController extends Controller
         $oldValues = $brand->only(['name']);
         $brand->update($validated);
         
-        // Log brand update
         try {
             ActivityLogService::logUpdate($brand, 'external_settings', $oldValues, "Updated brand {$brand->name}");
         } catch (\Exception $e) {
@@ -501,7 +625,6 @@ class ExternalSettingsController extends Controller
                 ->with('error', 'Cannot delete brand. It is linked to assets.');
         }
 
-        // Log brand deletion before deleting
         try {
             ActivityLogService::logDelete($brand, 'external_settings', "Deleted brand {$brand->name}");
         } catch (\Exception $e) {
@@ -514,7 +637,8 @@ class ExternalSettingsController extends Controller
             ->with('success', 'Brand deleted successfully.');
     }
 
-    // Category CRUD
+    // ==================== CATEGORY CRUD ====================
+
     public function storeCategory(Request $request)
     {
         $validated = $request->validate([
@@ -526,7 +650,6 @@ class ExternalSettingsController extends Controller
         $validated['is_active'] = true;
         $category = Category::create($validated);
         
-        // Log category creation
         try {
             ActivityLogService::logCreate($category, 'external_settings', "Created category {$category->name}");
         } catch (\Exception $e) {
@@ -548,7 +671,6 @@ class ExternalSettingsController extends Controller
         $oldValues = $category->only(['name', 'code']);
         $category->update($validated);
         
-        // Log category update
         try {
             ActivityLogService::logUpdate($category, 'external_settings', $oldValues, "Updated category {$category->name}");
         } catch (\Exception $e) {
@@ -566,7 +688,6 @@ class ExternalSettingsController extends Controller
                 ->with('error', 'Cannot delete category. It is linked to assets.');
         }
 
-        // Log category deletion before deleting
         try {
             ActivityLogService::logDelete($category, 'external_settings', "Deleted category {$category->name}");
         } catch (\Exception $e) {
@@ -579,10 +700,12 @@ class ExternalSettingsController extends Controller
             ->with('success', 'Category deleted successfully.');
     }
 
-    // Toggle Status
+    // ==================== TOGGLE STATUS ====================
+
     public function toggleStatus(Request $request, string $type, int $id)
     {
         $model = match($type) {
+            'organizations' => Organization::findOrFail($id),
             'clients' => Client::findOrFail($id),
             'vendors' => Vendor::findOrFail($id),
             'locations' => Location::findOrFail($id),

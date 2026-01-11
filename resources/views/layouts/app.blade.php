@@ -9,6 +9,7 @@
             $systemName = \App\Models\SystemSetting::systemName();
         @endphp
         <title>@yield('title', 'Dashboard') - {{ $systemName }}</title>
+        <link rel="icon" type="image/x-icon" href="{{ \App\Models\SystemSetting::iconPath() }}">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -639,6 +640,71 @@
                     }
                 }
             };
+        </script>
+
+        <!-- Print Detection Script -->
+        <script>
+            (function() {
+                let printLogged = false;
+                
+                // Detect print via beforeprint event
+                window.addEventListener('beforeprint', function() {
+                    if (!printLogged) {
+                        printLogged = true;
+                        logPrintAction();
+                        // Reset after 5 seconds to allow logging again
+                        setTimeout(function() { printLogged = false; }, 5000);
+                    }
+                });
+
+                // Detect Ctrl+P / Cmd+P
+                document.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                        if (!printLogged) {
+                            printLogged = true;
+                            logPrintAction();
+                            setTimeout(function() { printLogged = false; }, 5000);
+                        }
+                    }
+                });
+
+                function logPrintAction() {
+                    // Determine module from current URL
+                    let module = 'general';
+                    const path = window.location.pathname;
+                    
+                    if (path.includes('/helpdesk')) module = 'helpdesk';
+                    else if (path.includes('/internal/inventory')) module = 'internal_inventory';
+                    else if (path.includes('/internal/employee')) module = 'internal_employee';
+                    else if (path.includes('/internal/credentials')) module = 'internal_credentials';
+                    else if (path.includes('/internal/download')) module = 'internal_downloads';
+                    else if (path.includes('/external/inventory')) module = 'external_inventory';
+                    else if (path.includes('/external/projects')) module = 'external_projects';
+                    else if (path.includes('/external/reports')) module = 'external_reports';
+                    else if (path.includes('/settings/users')) module = 'settings_users';
+                    else if (path.includes('/settings/roles')) module = 'settings_roles';
+                    else if (path.includes('/settings/activity-logs')) module = 'settings_activity_logs';
+                    else if (path.includes('/settings')) module = 'settings';
+                    else if (path.includes('/dashboard')) module = 'dashboard';
+
+                    fetch('{{ route("settings.activity-logs.print") }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            module: module,
+                            description: 'Printed page: ' + document.title,
+                            page_url: window.location.href,
+                            page_title: document.title
+                        })
+                    }).catch(function(err) {
+                        console.log('Print log failed:', err);
+                    });
+                }
+            })();
         </script>
 
         <!-- Page-specific Scripts -->

@@ -178,6 +178,34 @@ class ActivityLogController extends Controller
     }
 
     /**
+     * Log a print action from client-side.
+     */
+    public function logPrint(Request $request)
+    {
+        $request->validate([
+            'module' => 'required|string|max:100',
+            'description' => 'required|string|max:500',
+            'page_url' => 'nullable|string|max:500',
+            'page_title' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            \App\Services\ActivityLogService::logPrint(
+                $request->module,
+                $request->description,
+                [
+                    'page_url' => $request->page_url,
+                    'page_title' => $request->page_title,
+                ]
+            );
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Detect suspicious activity patterns.
      */
     private function detectSuspiciousActivity(Request $request): array

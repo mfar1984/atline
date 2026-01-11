@@ -13,12 +13,12 @@ use App\Models\Vendor;
 use App\Services\ActivityLogService;
 use App\Services\AssetService;
 use App\Services\AttachmentService;
-use App\Traits\ClientIsolation;
+use App\Traits\ProjectAccess;
 use Illuminate\Http\Request;
 
 class AssetController extends Controller
 {
-    use ClientIsolation;
+    use ProjectAccess;
 
     protected AssetService $assetService;
     protected AttachmentService $attachmentService;
@@ -31,16 +31,14 @@ class AssetController extends Controller
 
     public function index(Request $request)
     {
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         
         $query = Asset::with(['project', 'category', 'brand', 'location', 'vendor']);
 
-        // Client isolation - clients only see assets from their projects
-        if ($client) {
-            $query->whereHas('project', function($q) use ($client) {
-                $q->where('client_id', $client->id);
-            });
+        // Apply project access filter for client users
+        $projectIds = $this->getAccessibleProjectIds();
+        if ($projectIds !== null) {
+            $query->whereIn('project_id', $projectIds);
         }
 
         // Search filter
@@ -55,7 +53,14 @@ class AssetController extends Controller
 
         // Project filter
         if ($request->filled('project_id')) {
-            $query->where('project_id', $request->project_id);
+            // Verify user can access this project
+            $projectId = $request->project_id;
+            if ($projectIds !== null && !in_array($projectId, $projectIds)) {
+                $projectId = null; // Invalid project, ignore filter
+            }
+            if ($projectId) {
+                $query->where('project_id', $projectId);
+            }
         }
 
         // Category filter
@@ -75,29 +80,29 @@ class AssetController extends Controller
 
         $assets = $query->latest()->paginate(\App\Models\SystemSetting::paginationSize());
         
-        // Client isolation for project dropdown
-        if ($client) {
-            $projects = Project::where('client_id', $client->id)->orderBy('name')->get();
-        } else {
-            $projects = Project::orderBy('name')->get();
-        }
+        // Get accessible projects for dropdown
+        $projects = $this->getAccessibleProjects();
         
         $categories = Category::active()->orderBy('name')->get();
         $locations = Location::active()->orderBy('name')->get();
+
+        // For backward compatibility
+        $client = $this->getClientForUser();
 
         return view('external.inventory.index', compact('assets', 'projects', 'categories', 'locations', 'client', 'isStaff'));
     }
 
     public function create()
     {
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         
-        // Client isolation for project dropdown
-        if ($client) {
-            $projects = Project::where('client_id', $client->id)->orderBy('name')->get();
-        } else {
-            $projects = Project::orderBy('name')->get();
+        // Get accessible projects for dropdown
+        $projects = $this->getAccessibleProjects();
+        
+        // If no projects available, show error
+        if ($projects->isEmpty()) {
+            return redirect()->route('external.inventory.index')
+                ->with('error', 'No projects available. Please create a project first or contact administrator for access.');
         }
         
         $categories = Category::active()->orderBy('name')->get();
@@ -105,13 +110,14 @@ class AssetController extends Controller
         $locations = Location::active()->orderBy('name')->get();
         $vendors = Vendor::active()->orderBy('name')->get();
 
+        // For backward compatibility
+        $client = $this->getClientForUser();
+
         return view('external.inventory.create', compact('projects', 'categories', 'brands', 'locations', 'vendors', 'client', 'isStaff'));
     }
 
     public function store(Request $request)
     {
-        $client = $this->getClientForUser();
-        
         // Validate common fields and items array
         $validated = $request->validate([
             'project_id' => 'required|exists:projects,id',
@@ -132,12 +138,10 @@ class AssetController extends Controller
             'items.min' => 'At least one asset item is required.',
         ]);
 
-        // Client isolation - verify project belongs to client
-        if ($client) {
-            $project = Project::find($validated['project_id']);
-            if (!$project || $project->client_id !== $client->id) {
-                abort(403, 'You do not have permission to add assets to this project.');
-            }
+        // Verify user can access this project
+        $project = Project::find($validated['project_id']);
+        if (!$project || !$this->canAccessProject($project)) {
+            abort(403, 'You do not have permission to add assets to this project.');
         }
 
         $createdAssets = [];
@@ -178,15 +182,14 @@ class AssetController extends Controller
 
     public function show(Asset $inventory)
     {
-        $client = $this->getClientForUser();
         $isClient = !$this->isStaff();
         
-        // Client isolation - verify asset belongs to client's project
-        if ($client) {
-            $inventory->load('project');
-            if (!$inventory->project || $inventory->project->client_id !== $client->id) {
-                abort(403, 'You do not have permission to view this asset.');
-            }
+        // Load project to check access
+        $inventory->load('project');
+        
+        // Verify user can access this asset's project
+        if ($inventory->project && !$this->canAccessProject($inventory->project)) {
+            abort(403, 'You do not have permission to view this asset.');
         }
         
         $inventory->load(['project', 'category', 'brand', 'location', 'vendor', 'attachments', 'logs.user']);
@@ -197,36 +200,37 @@ class AssetController extends Controller
         } catch (\Exception $e) {
             \Log::error('Activity logging failed: ' . $e->getMessage());
         }
+
+        // For backward compatibility
+        $client = $this->getClientForUser();
         
         return view('external.inventory.show', ['asset' => $inventory, 'client' => $client, 'isClient' => $isClient]);
     }
 
     public function edit(Asset $inventory)
     {
-        $client = $this->getClientForUser();
         $isStaff = $this->isStaff();
         
-        // Client isolation - verify asset belongs to client's project
-        if ($client) {
-            $inventory->load('project');
-            if (!$inventory->project || $inventory->project->client_id !== $client->id) {
-                abort(403, 'You do not have permission to edit this asset.');
-            }
+        // Load project to check access
+        $inventory->load('project');
+        
+        // Verify user can access this asset's project
+        if ($inventory->project && !$this->canAccessProject($inventory->project)) {
+            abort(403, 'You do not have permission to edit this asset.');
         }
         
         $inventory->load(['attachments']);
         
-        // Client isolation for project dropdown
-        if ($client) {
-            $projects = Project::where('client_id', $client->id)->orderBy('name')->get();
-        } else {
-            $projects = Project::orderBy('name')->get();
-        }
+        // Get accessible projects for dropdown
+        $projects = $this->getAccessibleProjects();
         
         $categories = Category::active()->orderBy('name')->get();
         $brands = Brand::active()->orderBy('name')->get();
         $locations = Location::active()->orderBy('name')->get();
         $vendors = Vendor::active()->orderBy('name')->get();
+
+        // For backward compatibility
+        $client = $this->getClientForUser();
 
         return view('external.inventory.edit', [
             'asset' => $inventory,
@@ -242,22 +246,20 @@ class AssetController extends Controller
 
     public function update(AssetRequest $request, Asset $inventory)
     {
-        $client = $this->getClientForUser();
+        // Load project to check access
+        $inventory->load('project');
         
-        // Client isolation - verify asset belongs to client's project
-        if ($client) {
-            $inventory->load('project');
-            if (!$inventory->project || $inventory->project->client_id !== $client->id) {
-                abort(403, 'You do not have permission to update this asset.');
-            }
+        // Verify user can access this asset's project
+        if ($inventory->project && !$this->canAccessProject($inventory->project)) {
+            abort(403, 'You do not have permission to update this asset.');
         }
         
         $validated = $request->validated();
         
-        // Client isolation - verify new project belongs to client
-        if ($client && isset($validated['project_id'])) {
+        // Verify user can access the new project if changing
+        if (isset($validated['project_id'])) {
             $newProject = Project::find($validated['project_id']);
-            if (!$newProject || $newProject->client_id !== $client->id) {
+            if (!$newProject || !$this->canAccessProject($newProject)) {
                 abort(403, 'You do not have permission to move asset to this project.');
             }
         }
@@ -295,14 +297,12 @@ class AssetController extends Controller
 
     public function destroy(Asset $inventory)
     {
-        $client = $this->getClientForUser();
+        // Load project to check access
+        $inventory->load('project');
         
-        // Client isolation - verify asset belongs to client's project
-        if ($client) {
-            $inventory->load('project');
-            if (!$inventory->project || $inventory->project->client_id !== $client->id) {
-                abort(403, 'You do not have permission to delete this asset.');
-            }
+        // Verify user can access this asset's project
+        if ($inventory->project && !$this->canAccessProject($inventory->project)) {
+            abort(403, 'You do not have permission to delete this asset.');
         }
         
         // Log delete activity before deletion

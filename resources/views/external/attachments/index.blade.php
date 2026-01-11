@@ -21,10 +21,10 @@
                        class="w-full px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500"
                        style="font-family: Poppins, sans-serif; min-height: 32px;">
             </div>
-            <select name="project_id" class="px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500 min-w-[140px]" style="font-family: Poppins, sans-serif; min-height: 32px;">
+            <select name="project_id" class="px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500 min-w-[140px]" style="font-family: Poppins, sans-serif; min-height: 32px; max-width: 200px;">
                 <option value="">All Projects</option>
                 @foreach($projects as $project)
-                    <option value="{{ $project->id }}" {{ request('project_id') == $project->id ? 'selected' : '' }}>{{ $project->name }}</option>
+                    <option value="{{ $project->id }}" {{ request('project_id') == $project->id ? 'selected' : '' }} title="{{ $project->name }}">{{ Str::limit($project->name, 25) }}</option>
                 @endforeach
             </select>
             <select name="file_type" class="px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500 min-w-[120px]" style="font-family: Poppins, sans-serif; min-height: 32px;">

@@ -12,6 +12,7 @@ class Ticket extends Model
 
     protected $fillable = [
         'ticket_number',
+        'organization_id',
         'client_id',
         'asset_id',
         'created_by',
@@ -32,6 +33,11 @@ class Ticket extends Model
         'resolved_at' => 'datetime',
         'closed_at' => 'datetime',
     ];
+
+    public function organization()
+    {
+        return $this->belongsTo(Organization::class);
+    }
 
     public function client()
     {

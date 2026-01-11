@@ -40,6 +40,7 @@ return [
         'external_inventory' => 'External > Inventory',
         'external_reports' => 'External > Reports',
         'external_attachments' => 'External > Attachments',
+        'external_settings_organization' => 'External > Settings > Organization',
         'external_settings_client' => 'External > Settings > Client',
         'external_settings_vendor' => 'External > Settings > Vendor',
         'external_settings_location' => 'External > Settings > Location',
@@ -64,6 +65,7 @@ return [
         'settings_integrations_storage' => 'System Settings > Integrations > Storage',
         'settings_integrations_weather' => 'System Settings > Integrations > Weather',
         'settings_integrations_webhook' => 'System Settings > Integrations > Webhook',
+        'settings_integrations_telegram' => 'System Settings > Integrations > Telegram',
         'settings_activity_logs' => 'System Settings > Activity Logs',
     ],
 
@@ -177,6 +179,13 @@ return [
             'update' => false, // Tiada update button
             'delete' => true,
             'export' => false, // Tiada butang export dalam UI
+        ],
+        'external_settings_organization' => [
+            'view' => true,
+            'create' => true,
+            'update' => true,
+            'delete' => true,
+            'export' => false,
         ],
         'external_settings_client' => [
             'view' => true,
@@ -323,6 +332,13 @@ return [
             'delete' => false,
             'export' => false,
         ],
+        'settings_integrations_telegram' => [
+            'view' => true,
+            'create' => false,
+            'update' => true,
+            'delete' => false,
+            'export' => false,
+        ],
         'settings_activity_logs' => [
             'view' => true,
             'create' => false,
@@ -353,12 +369,13 @@ return [
         'external.inventory' => 'external_inventory',
         'external.reports' => 'external_reports',
         'external.attachments' => 'external_attachments',
+        'external.settings.organizations' => 'external_settings_organization',
         'external.settings.clients' => 'external_settings_client',
         'external.settings.vendors' => 'external_settings_vendor',
         'external.settings.locations' => 'external_settings_location',
         'external.settings.brands' => 'external_settings_brand',
         'external.settings.categories' => 'external_settings_category',
-        'external.settings' => 'external_settings_client', // Default for settings index
+        'external.settings' => 'external.settings', // Uses tab_mapping for sub-module check
         
         // Helpdesk
         'helpdesk' => 'helpdesk', // Will be further mapped by tab
@@ -387,6 +404,14 @@ return [
             'brands' => 'internal_inventory_brands',
             'categories' => 'internal_inventory_categories',
         ],
+        'external.settings' => [
+            'organizations' => 'external_settings_organization',
+            'clients' => 'external_settings_client',
+            'vendors' => 'external_settings_vendor',
+            'locations' => 'external_settings_location',
+            'brands' => 'external_settings_brand',
+            'categories' => 'external_settings_category',
+        ],
         'helpdesk' => [
             'tickets' => 'helpdesk_tickets',
             'templates' => 'helpdesk_templates',
@@ -398,6 +423,7 @@ return [
         'settings.integrations' => [
             'recycle-bin' => 'settings_integrations_recycle_bin',
             'email' => 'settings_integrations_email',
+            'telegram' => 'settings_integrations_telegram',
             'payment' => 'settings_integrations_payment',
             'storage' => 'settings_integrations_storage',
             'weather' => 'settings_integrations_weather',

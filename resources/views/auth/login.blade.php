@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - {{ \App\Models\SystemSetting::systemName() }}</title>
+    <link rel="icon" type="image/x-icon" href="{{ \App\Models\SystemSetting::iconPath() }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -31,7 +32,7 @@
         /* Left Side - Hero Background (75%) */
         .hero-section {
             width: 75%;
-            background: url('/images/hero-bg.png') center center / cover no-repeat;
+            background: url('{{ \App\Models\SystemSetting::heroImagePath() }}') center center / cover no-repeat;
             position: relative;
             display: flex;
             align-items: center;
@@ -325,7 +326,7 @@
         <!-- Right Side - Login Form (25%) -->
         <div class="login-section">
             <div class="login-header">
-                <img src="/images/logo.png" alt="Logo" class="login-logo">
+                <img src="{{ \App\Models\SystemSetting::logoPath() }}" alt="Logo" class="login-logo">
             </div>
             
             @if($errors->any())

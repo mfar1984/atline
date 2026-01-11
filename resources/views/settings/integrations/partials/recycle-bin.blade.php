@@ -221,7 +221,7 @@
     <x-ui.data-table
         :headers="[
             ['label' => 'Type', 'align' => 'text-left'],
-            ['label' => 'Name/Title', 'align' => 'text-left'],
+            ['label' => 'Name', 'align' => 'text-left'],
             ['label' => 'Original ID', 'align' => 'text-left'],
             ['label' => 'Deleted By', 'align' => 'text-left'],
             ['label' => 'Deleted At', 'align' => 'text-left']
@@ -237,8 +237,8 @@
                     {{ $item->getRecycleBinType() }}
                 </span>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-900" style="font-family: Poppins, sans-serif;">
-                {{ $item->getRecycleBinName() }}
+            <td class="px-6 py-4 text-xs text-gray-900" style="font-family: Poppins, sans-serif; max-width: 200px;">
+                <span class="block truncate" title="{{ $item->getRecycleBinName() }}">{{ Str::limit($item->getRecycleBinName(), 30) }}</span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-600" style="font-family: Poppins, sans-serif;">
                 #{{ $item->id }}

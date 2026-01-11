@@ -50,7 +50,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the client record for this user
+     * Get the client record for this user (legacy)
      */
     public function client()
     {
@@ -58,7 +58,45 @@ class User extends Authenticatable
     }
 
     /**
+     * Get all projects this user has access to (many-to-many)
+     */
+    public function projects()
+    {
+        return $this->belongsToMany(Project::class, 'project_user')
+            ->withTimestamps();
+    }
+
+    /**
+     * Get IDs of all projects this user can access
+     */
+    public function getAccessibleProjectIds(): array
+    {
+        return $this->projects()->pluck('projects.id')->toArray();
+    }
+
+    /**
+     * Check if user has access to a specific project
+     */
+    public function hasProjectAccess(int $projectId): bool
+    {
+        return $this->projects()->where('projects.id', $projectId)->exists();
+    }
+
+    /**
+     * Check if user is a client user (has project access via project_user)
+     */
+    public function isClientUser(): bool
+    {
+        // User is a client if they have the Client role
+        if ($this->role && $this->role->name === 'Client') {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Check if user has specific permission
+     * Permission is checked from role's permissions array
      */
     public function hasPermission(string $permission): bool
     {
@@ -67,6 +105,7 @@ class User extends Authenticatable
 
     /**
      * Check if user has access to a module
+     * Module access is checked from role's permissions array
      */
     public function hasModuleAccess(string $module): bool
     {
