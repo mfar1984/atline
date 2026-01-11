@@ -120,6 +120,9 @@ class IntegrationController extends Controller
         $freeBytes = max(0, $freeLimit - $usedBytes);
         $usagePercent = $freeLimit > 0 ? min(100, ($usedBytes / $freeLimit) * 100) : 0;
         
+        // Check if storage warning should be sent (at 80% and 90%)
+        $this->checkStorageWarning($usagePercent, $usedBytes, $freeLimit);
+        
         return [
             'used_bytes' => $usedBytes,
             'used_formatted' => $this->formatBytes($usedBytes),
@@ -130,6 +133,45 @@ class IntegrationController extends Controller
             'usage_percent' => round($usagePercent, 1),
             'total_files' => $totalFiles,
         ];
+    }
+    
+    /**
+     * Check and send storage warning notification
+     */
+    private function checkStorageWarning(float $usagePercent, int $usedBytes, int $totalBytes): void
+    {
+        // Warning thresholds: 80% and 90%
+        $warningThresholds = [80, 90];
+        
+        foreach ($warningThresholds as $threshold) {
+            if ($usagePercent >= $threshold) {
+                $cacheKey = "storage_warning_{$threshold}_sent";
+                
+                // Only send once per day per threshold
+                if (!\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+                    $usedFormatted = $this->formatBytes($usedBytes);
+                    $totalFormatted = $this->formatBytes($totalBytes);
+                    
+                    // Log activity and send Telegram notification
+                    try {
+                        ActivityLogService::logStorageWarning(
+                            "Storage usage at {$usagePercent}% ({$usedFormatted} / {$totalFormatted})",
+                            [
+                                'usage_percent' => $usagePercent,
+                                'used_bytes' => $usedBytes,
+                                'total_bytes' => $totalBytes,
+                                'threshold' => $threshold,
+                            ]
+                        );
+                    } catch (\Exception $e) {
+                        \Illuminate\Support\Facades\Log::error('Storage warning logging failed: ' . $e->getMessage());
+                    }
+                    
+                    // Cache for 24 hours to prevent spam
+                    \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->addHours(24));
+                }
+            }
+        }
     }
     
     /**

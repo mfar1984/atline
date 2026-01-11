@@ -127,12 +127,7 @@ class RecycleBinService
         $result = $item->restore();
 
         if ($result) {
-            $this->activityLogService->log(
-                'restore',
-                'recycle_bin',
-                "Restored {$type}: {$itemName}",
-                $item
-            );
+            ActivityLogService::logRestore($item, 'recycle_bin', "Restored {$type}: {$itemName}");
         }
 
         return $result;
@@ -159,11 +154,7 @@ class RecycleBinService
         $result = $item->forceDelete();
 
         if ($result) {
-            $this->activityLogService->log(
-                'permanent_delete',
-                'recycle_bin',
-                "Permanently deleted {$type}: {$itemName}"
-            );
+            ActivityLogService::logDelete($item, 'recycle_bin', "Permanently deleted {$type}: {$itemName}");
         }
 
         return $result;
@@ -189,11 +180,7 @@ class RecycleBinService
         }
 
         if ($deletedCount > 0) {
-            $this->activityLogService->log(
-                'bulk_delete',
-                'recycle_bin',
-                "Bulk deleted {$deletedCount} items older than {$days} days"
-            );
+            ActivityLogService::log('bulk_delete', "Bulk deleted {$deletedCount} items older than {$days} days", 'recycle_bin');
         }
 
         return $deletedCount;

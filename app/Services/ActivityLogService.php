@@ -156,8 +156,9 @@ class ActivityLogService
                 'timestamp' => $activityLog->created_at->format('d M Y, H:i:s'),
             ];
 
-            // Dispatch job (will run synchronously if queue is sync)
-            SendTelegramNotificationJob::dispatch($data);
+            // Run synchronously - no queue needed for shared hosting
+            $job = new SendTelegramNotificationJob($data);
+            $job->handle();
         } catch (\Exception $e) {
             // Silent fail - don't interrupt main operation
             \Illuminate\Support\Facades\Log::warning('Failed to dispatch Telegram notification', [
@@ -362,6 +363,27 @@ class ActivityLogService
     {
         return self::log('print', $description, $module, null, [
             'print' => $printDetails,
+        ]);
+    }
+
+    /**
+     * Log a storage warning activity.
+     */
+    public static function logStorageWarning(string $description, ?array $storageDetails = null): ActivityLog
+    {
+        return self::log('storage_warning', $description, 'system', null, [
+            'storage' => $storageDetails,
+        ]);
+    }
+
+    /**
+     * Log an export activity with file details.
+     */
+    public static function logExportFile(string $module, string $description, string $filename, ?array $exportDetails = null): ActivityLog
+    {
+        return self::log('export', $description, $module, null, [
+            'filename' => $filename,
+            'export' => $exportDetails,
         ]);
     }
 }

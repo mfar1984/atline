@@ -32,6 +32,9 @@ class TelegramNotificationService
         'password_change' => '🔑',
         '2fa_enabled' => '🛡️',
         '2fa_disabled' => '🛡️',
+        'storage_warning' => '💾',
+        'bulk_delete' => '🗑️',
+        'permanent_delete' => '🗑️',
     ];
 
     /**
@@ -64,12 +67,24 @@ class TelegramNotificationService
         $settings = self::getSettings();
 
         if (!$settings) {
+            Log::debug('Telegram notification skipped - no settings configured or inactive');
             return false;
         }
 
         $message = self::formatActivityMessage($data);
+        
+        Log::debug('Sending Telegram notification', [
+            'action' => $data['action'] ?? 'unknown',
+            'module' => $data['module'] ?? 'unknown',
+        ]);
 
-        return self::sendMessage($settings['bot_token'], $settings['channel_id'], $message);
+        $result = self::sendMessage($settings['bot_token'], $settings['channel_id'], $message);
+        
+        if ($result) {
+            Log::debug('Telegram notification sent successfully');
+        }
+        
+        return $result;
     }
 
     /**

@@ -9,19 +9,9 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
-class SendTelegramNotificationJob implements ShouldQueue
+class SendTelegramNotificationJob
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    /**
-     * The number of times the job may be attempted.
-     */
-    public int $tries = 3;
-
-    /**
-     * The number of seconds to wait before retrying the job.
-     */
-    public int $backoff = 5;
+    use Dispatchable;
 
     /**
      * Activity data to send
@@ -37,7 +27,7 @@ class SendTelegramNotificationJob implements ShouldQueue
     }
 
     /**
-     * Execute the job.
+     * Execute the job synchronously.
      */
     public function handle(): void
     {
