@@ -840,62 +840,388 @@
 
             /* ============================================
                DASHBOARD RESPONSIVE STYLES
+               Mobile & Tablet Only - Desktop Unchanged
                ============================================ */
-            @media (max-width: 768px) {
-                /* Dashboard stats grid - 2 columns on mobile */
+            
+            /* Mobile Portrait (max-width: 480px) */
+            @media (max-width: 480px) {
+                /* Dashboard container padding */
+                div[style*="padding: 24px"] {
+                    padding: 12px !important;
+                }
+                
+                /* Dashboard header - more compact */
+                div[style*="padding: 16px 24px"] {
+                    padding: 12px 16px !important;
+                }
+                div[style*="padding: 16px 24px"] h2 {
+                    font-size: 14px !important;
+                }
+                div[style*="padding: 16px 24px"] p {
+                    font-size: 11px !important;
+                }
+                
+                /* Stats grid - 2 columns on mobile */
                 div[style*="grid-template-columns: repeat(4, 1fr)"] {
                     grid-template-columns: repeat(2, 1fr) !important;
-                    gap: 12px !important;
+                    gap: 10px !important;
+                    margin-bottom: 16px !important;
                 }
-                /* Dashboard stat cards */
+                
+                /* Stat cards - more compact but still beautiful */
                 div[style*="grid-template-columns: repeat(4, 1fr)"] > div {
                     padding: 14px !important;
+                    border-radius: 10px !important;
+                    overflow: hidden !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div > div {
+                    overflow: hidden !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div > div > div {
+                    overflow: hidden !important;
+                    max-width: 100% !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div p {
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
+                    white-space: nowrap !important;
+                    max-width: 100% !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div p[style*="font-size: 12px"] {
+                    font-size: 10px !important;
                 }
                 div[style*="grid-template-columns: repeat(4, 1fr)"] > div p[style*="font-size: 32px"] {
-                    font-size: 24px !important;
+                    font-size: 22px !important;
+                    margin: 6px 0 2px 0 !important;
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div p[style*="font-size: 11px"] {
+                    font-size: 9px !important;
                 }
                 div[style*="grid-template-columns: repeat(4, 1fr)"] > div span[style*="font-size: 48px"] {
                     font-size: 32px !important;
                 }
 
-                /* Dashboard main content grid - stack on mobile */
+                /* Main content grid - stack vertically */
+                div[style*="grid-template-columns: 2fr 1fr"],
+                div[style*="grid-template-columns: 1fr 1fr"] {
+                    grid-template-columns: 1fr !important;
+                    gap: 12px !important;
+                    margin-bottom: 16px !important;
+                }
+
+                /* Section cards - more compact */
+                div[style*="background-color: #f9fafb"] {
+                    padding: 12px !important;
+                    border-radius: 10px !important;
+                }
+                div[style*="background-color: #f9fafb"] h3 {
+                    font-size: 12px !important;
+                    margin-bottom: 12px !important;
+                }
+                div[style*="background-color: #f9fafb"] a[style*="font-size: 11px"] {
+                    font-size: 10px !important;
+                }
+
+                /* Tables - more compact */
+                div[style*="background-color: #f9fafb"] table th {
+                    padding: 8px 0 !important;
+                    font-size: 9px !important;
+                }
+                div[style*="background-color: #f9fafb"] table td {
+                    padding: 10px 0 !important;
+                    font-size: 11px !important;
+                }
+                div[style*="background-color: #f9fafb"] table td a {
+                    font-size: 11px !important;
+                }
+                div[style*="background-color: #f9fafb"] table td span[style*="font-size: 12px"] {
+                    font-size: 10px !important;
+                }
+                
+                /* Status badges - smaller */
+                div[style*="background-color: #f9fafb"] table span[style*="font-size: 10px"] {
+                    font-size: 9px !important;
+                    padding: 3px 8px !important;
+                }
+                
+                /* Chart container */
+                div[style*="height: 220px"] {
+                    height: 180px !important;
+                }
+                
+                /* Alert box */
+                div[style*="background-color: #fef3c7"] {
+                    padding: 10px !important;
+                    margin-bottom: 12px !important;
+                }
+                div[style*="background-color: #fef3c7"] p[style*="font-size: 12px"] {
+                    font-size: 11px !important;
+                }
+                div[style*="background-color: #fef3c7"] p[style*="font-size: 11px"] {
+                    font-size: 10px !important;
+                }
+            }
+
+            /* Mobile Landscape (481px - 767px) */
+            @media (min-width: 481px) and (max-width: 767px) {
+                /* Dashboard container */
+                div[style*="padding: 24px"] {
+                    padding: 16px !important;
+                }
+                
+                /* Stats grid - 2 columns */
+                div[style*="grid-template-columns: repeat(4, 1fr)"] {
+                    grid-template-columns: repeat(2, 1fr) !important;
+                    gap: 12px !important;
+                }
+                
+                /* Stat cards */
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div {
+                    padding: 16px !important;
+                    overflow: hidden !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div > div {
+                    overflow: hidden !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div > div > div {
+                    overflow: hidden !important;
+                    max-width: 100% !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div p {
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
+                    white-space: nowrap !important;
+                    max-width: 100% !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div p[style*="font-size: 32px"] {
+                    font-size: 26px !important;
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div span[style*="font-size: 48px"] {
+                    font-size: 36px !important;
+                }
+
+                /* Main content - stack */
                 div[style*="grid-template-columns: 2fr 1fr"],
                 div[style*="grid-template-columns: 1fr 1fr"] {
                     grid-template-columns: 1fr !important;
                     gap: 16px !important;
                 }
-
-                /* Dashboard section headers */
+                
+                /* Section cards */
                 div[style*="background-color: #f9fafb"] {
-                    padding: 14px !important;
+                    padding: 16px !important;
                 }
                 div[style*="background-color: #f9fafb"] h3 {
                     font-size: 13px !important;
                 }
-
-                /* Dashboard tables */
-                div[style*="background-color: #f9fafb"] table td,
-                div[style*="background-color: #f9fafb"] table th {
-                    padding: 8px 0 !important;
-                    font-size: 11px !important;
-                }
             }
 
-            @media (min-width: 481px) and (max-width: 768px) {
-                /* Dashboard stats - still 2 columns but larger */
-                div[style*="grid-template-columns: repeat(4, 1fr)"] {
-                    grid-template-columns: repeat(2, 1fr) !important;
-                }
-            }
-
+            /* Tablet Portrait (768px - 1024px) */
             @media (min-width: 768px) and (max-width: 1024px) {
-                /* Dashboard stats - 2x2 grid on tablet */
+                /* Dashboard container */
+                div[style*="padding: 24px"] {
+                    padding: 20px !important;
+                }
+                
+                /* Stats grid - 2x2 grid */
                 div[style*="grid-template-columns: repeat(4, 1fr)"] {
                     grid-template-columns: repeat(2, 1fr) !important;
+                    gap: 14px !important;
                 }
-                /* Dashboard main content - stack on tablet portrait */
+                
+                /* Stat cards */
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div {
+                    padding: 18px !important;
+                    overflow: hidden !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div > div {
+                    overflow: hidden !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div > div > div {
+                    overflow: hidden !important;
+                    max-width: 100% !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div p {
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
+                    white-space: nowrap !important;
+                    max-width: 100% !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div p[style*="font-size: 32px"] {
+                    font-size: 28px !important;
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div span[style*="font-size: 48px"] {
+                    font-size: 40px !important;
+                }
+
+                /* Main content - stack on tablet portrait */
                 div[style*="grid-template-columns: 2fr 1fr"] {
                     grid-template-columns: 1fr !important;
+                    gap: 20px !important;
+                }
+                
+                /* Second row - keep 2 columns on tablet */
+                div[style*="grid-template-columns: 1fr 1fr"] {
+                    grid-template-columns: 1fr 1fr !important;
+                    gap: 20px !important;
+                }
+                
+                /* Section cards */
+                div[style*="background-color: #f9fafb"] {
+                    padding: 18px !important;
+                }
+            }
+
+            /* Tablet Landscape (1024px - 1280px) */
+            @media (min-width: 1024px) and (max-width: 1280px) {
+                /* Slightly reduce padding only */
+                div[style*="padding: 24px"] {
+                    padding: 20px !important;
+                }
+                
+                /* Stats grid - keep 4 columns but smaller gap */
+                div[style*="grid-template-columns: repeat(4, 1fr)"] {
+                    gap: 14px !important;
+                }
+                
+                /* Stat cards - slightly smaller */
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div {
+                    padding: 16px !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div p[style*="font-size: 32px"] {
+                    font-size: 28px !important;
+                }
+                div[style*="grid-template-columns: repeat(4, 1fr)"] > div span[style*="font-size: 48px"] {
+                    font-size: 42px !important;
+                }
+            }
+
+            /* ============================================
+               DOWNLOAD CENTER RESPONSIVE STYLES
+               Mobile & Tablet Only - Desktop Unchanged
+               ============================================ */
+            
+            /* Mobile Portrait (max-width: 480px) */
+            @media (max-width: 480px) {
+                /* Download Center - Filter Form Full Width */
+                #filter-form.flex.items-center.gap-2 {
+                    display: flex !important;
+                    flex-direction: column !important;
+                    gap: 10px !important;
+                    padding: 12px 16px !important;
+                }
+                
+                /* Search input - full width */
+                #filter-form .flex-1 {
+                    width: 100% !important;
+                    flex: 1 1 100% !important;
+                }
+                #filter-form input[type="text"] {
+                    width: 100% !important;
+                    min-height: 44px !important;
+                    padding: 12px 16px !important;
+                    font-size: 14px !important;
+                    border-radius: 8px !important;
+                }
+                
+                /* Dropdowns - full width stacked */
+                #filter-form select {
+                    width: 100% !important;
+                    min-width: 100% !important;
+                    min-height: 44px !important;
+                    padding: 12px 16px !important;
+                    font-size: 13px !important;
+                    border-radius: 8px !important;
+                }
+                
+                /* Buttons - full width stacked */
+                #filter-form button {
+                    width: 100% !important;
+                    min-height: 44px !important;
+                    padding: 12px 16px !important;
+                    font-size: 13px !important;
+                    font-weight: 600 !important;
+                    border-radius: 8px !important;
+                    justify-content: center !important;
+                }
+            }
+
+            /* Mobile Landscape (481px - 767px) */
+            @media (min-width: 481px) and (max-width: 767px) {
+                /* Download Center - Filter Form */
+                #filter-form.flex.items-center.gap-2 {
+                    display: flex !important;
+                    flex-wrap: wrap !important;
+                    gap: 10px !important;
+                    padding: 14px 18px !important;
+                }
+                
+                /* Search input - full width */
+                #filter-form .flex-1 {
+                    flex: 1 1 100% !important;
+                    width: 100% !important;
+                }
+                #filter-form input[type="text"] {
+                    width: 100% !important;
+                    min-height: 44px !important;
+                    font-size: 14px !important;
+                }
+                
+                /* Dropdowns - 2 columns */
+                #filter-form select {
+                    flex: 1 1 calc(50% - 5px) !important;
+                    min-width: calc(50% - 5px) !important;
+                    min-height: 44px !important;
+                    font-size: 13px !important;
+                }
+                
+                /* Buttons - 2 columns */
+                #filter-form button {
+                    flex: 1 1 calc(50% - 5px) !important;
+                    min-height: 44px !important;
+                    font-size: 13px !important;
+                    justify-content: center !important;
+                }
+            }
+
+            /* Tablet Portrait (768px - 1024px) */
+            @media (min-width: 768px) and (max-width: 1024px) {
+                /* Download Center - Filter Form */
+                #filter-form.flex.items-center.gap-2 {
+                    display: flex !important;
+                    flex-wrap: wrap !important;
+                    gap: 12px !important;
+                    padding: 16px 20px !important;
+                }
+                
+                /* Search input - wider but not full */
+                #filter-form .flex-1 {
+                    flex: 1 1 100% !important;
+                    width: 100% !important;
+                }
+                #filter-form input[type="text"] {
+                    width: 100% !important;
+                    min-height: 44px !important;
+                }
+                
+                /* Dropdowns - inline */
+                #filter-form select {
+                    flex: 1 1 auto !important;
+                    min-width: 140px !important;
+                    min-height: 44px !important;
+                }
+                
+                /* Buttons - inline */
+                #filter-form button {
+                    flex: 0 0 auto !important;
+                    min-height: 44px !important;
+                    padding: 0 20px !important;
                 }
             }
 

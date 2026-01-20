@@ -89,7 +89,7 @@ class AttachmentService
     /**
      * Store attachment with R2 support
      */
-    public function store(UploadedFile $file, $model, string $displayName = null): Attachment
+    public function store(UploadedFile $file, $model, ?string $displayName = null): Attachment
     {
         // Check R2 configuration
         $storageSetting = IntegrationSetting::where('integration_type', IntegrationSetting::TYPE_STORAGE)
@@ -106,7 +106,7 @@ class AttachmentService
     /**
      * Store to local storage
      */
-    protected function storeToLocal(UploadedFile $file, $model, string $displayName = null): Attachment
+    protected function storeToLocal(UploadedFile $file, $model, ?string $displayName = null): Attachment
     {
         $folder = strtolower(class_basename($model)) . 's';
         $path = $file->store("attachments/{$folder}", 'public');
@@ -128,7 +128,7 @@ class AttachmentService
     /**
      * Store to R2 storage
      */
-    protected function storeToR2(UploadedFile $file, $model, string $displayName, IntegrationSetting $storageSetting): Attachment
+    protected function storeToR2(UploadedFile $file, $model, ?string $displayName, IntegrationSetting $storageSetting): Attachment
     {
         $credentials = $storageSetting->getDecryptedCredentials();
         

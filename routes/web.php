@@ -110,10 +110,12 @@ Route::middleware('auth')->group(function () {
     Route::prefix('external')->name('external.')->middleware('permission')->group(function () {
         Route::resource('projects', ProjectController::class);
         
-        // Inventory/Assets
-        Route::resource('inventory', AssetController::class);
+        // Inventory/Assets - Specific routes MUST come before resource routes
+        Route::get('inventory/download-template', [AssetController::class, 'downloadTemplate'])->name('inventory.download-template');
+        Route::post('inventory/bulk-store', [AssetController::class, 'bulkStore'])->name('inventory.bulk-store');
         Route::get('inventory/category/{category}/fields', [AssetController::class, 'getDynamicFields'])->name('inventory.fields');
         Route::get('inventory/category/{category}/generate-id', [AssetController::class, 'generateAssetId'])->name('inventory.generate-id');
+        Route::resource('inventory', AssetController::class);
         
         // Reports
         Route::get('reports', [ReportController::class, 'index'])->name('reports.index');

@@ -342,4 +342,230 @@ class AssetController extends Controller
             'asset_tag' => $this->assetService->generateAssetId($category),
         ]);
     }
+
+    /**
+     * Bulk store assets from CSV
+     */
+    public function bulkStore(Request $request)
+    {
+        $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'csv_file' => 'required|file|mimes:csv,txt|max:10240', // Max 10MB
+        ]);
+
+        // Verify user can access this project
+        $project = Project::find($request->project_id);
+        if (!$project || !$this->canAccessProject($project)) {
+            return back()->with('error', 'You do not have permission to add assets to this project.');
+        }
+
+        try {
+            $file = $request->file('csv_file');
+            $csvData = array_map('str_getcsv', file($file->getRealPath()));
+            
+            // Remove header row
+            $headers = array_shift($csvData);
+            
+            // Validate headers
+            $expectedHeaders = ['category_name', 'brand_name', 'model', 'serial_number', 'vendor_name', 'location_name', 'status', 'assigned_to', 'department', 'unit_price', 'notes'];
+            if ($headers !== $expectedHeaders) {
+                return back()->with('error', 'Invalid CSV format. Please use the provided template.');
+            }
+
+            $createdCount = 0;
+            $errors = [];
+            $rowNumber = 2; // Start from 2 (after header)
+
+            foreach ($csvData as $row) {
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    $rowNumber++;
+                    continue;
+                }
+
+                try {
+                    // Parse CSV row
+                    $categoryName = trim($row[0] ?? '');
+                    $brandName = trim($row[1] ?? '');
+                    $model = trim($row[2] ?? '');
+                    $serialNumber = trim($row[3] ?? '');
+                    $vendorName = trim($row[4] ?? '');
+                    $locationName = trim($row[5] ?? '');
+                    $status = trim($row[6] ?? 'active');
+                    $assignedTo = trim($row[7] ?? '');
+                    $department = trim($row[8] ?? '');
+                    $unitPrice = trim($row[9] ?? '');
+                    $notes = trim($row[10] ?? '');
+
+                    // Validate status
+                    if (!in_array($status, ['active', 'spare', 'damaged', 'maintenance', 'disposed'])) {
+                        $errors[] = "Row {$rowNumber}: Invalid status '{$status}'. Must be: active, spare, damaged, maintenance, or disposed.";
+                        $rowNumber++;
+                        continue;
+                    }
+
+                    // Find or skip if not found
+                    $categoryId = null;
+                    if ($categoryName) {
+                        $category = Category::where('name', $categoryName)->first();
+                        if (!$category) {
+                            $errors[] = "Row {$rowNumber}: Category '{$categoryName}' not found. Skipping row.";
+                            $rowNumber++;
+                            continue;
+                        }
+                        $categoryId = $category->id;
+                    }
+
+                    $brandId = null;
+                    if ($brandName) {
+                        $brand = Brand::where('name', $brandName)->first();
+                        $brandId = $brand ? $brand->id : null;
+                    }
+
+                    $vendorId = null;
+                    if ($vendorName) {
+                        $vendor = Vendor::where('name', $vendorName)->first();
+                        $vendorId = $vendor ? $vendor->id : null;
+                    }
+
+                    $locationId = null;
+                    if ($locationName) {
+                        $location = Location::where('name', $locationName)->first();
+                        $locationId = $location ? $location->id : null;
+                    }
+
+                    // Generate asset tag
+                    $assetTag = $this->assetService->generateAssetTag();
+
+                    // Create asset
+                    $asset = Asset::create([
+                        'project_id' => $request->project_id,
+                        'category_id' => $categoryId,
+                        'brand_id' => $brandId,
+                        'model' => $model ?: null,
+                        'serial_number' => $serialNumber ?: null,
+                        'vendor_id' => $vendorId,
+                        'location_id' => $locationId,
+                        'status' => $status,
+                        'assigned_to' => $assignedTo ?: null,
+                        'department' => $department ?: null,
+                        'unit_price' => $unitPrice ? floatval($unitPrice) : null,
+                        'notes' => $notes ?: null,
+                        'asset_tag' => $assetTag,
+                    ]);
+
+                    // Log asset creation
+                    try {
+                        ActivityLogService::logCreate($asset, 'external_inventory', "Bulk created asset {$asset->asset_tag}");
+                    } catch (\Exception $e) {
+                        \Log::error('Activity logging failed: ' . $e->getMessage());
+                    }
+
+                    $createdCount++;
+                } catch (\Exception $e) {
+                    $errors[] = "Row {$rowNumber}: " . $e->getMessage();
+                }
+
+                $rowNumber++;
+            }
+
+            // Prepare success message
+            $message = "{$createdCount} asset(s) created successfully from CSV.";
+            if (!empty($errors)) {
+                $message .= " " . count($errors) . " row(s) had errors.";
+            }
+
+            if ($createdCount > 0) {
+                return redirect()->route('external.inventory.index')
+                    ->with('success', $message)
+                    ->with('errors', $errors);
+            } else {
+                return back()->with('error', 'No assets were created. Please check your CSV file.')
+                    ->with('errors', $errors);
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Bulk asset upload failed: ' . $e->getMessage());
+            return back()->with('error', 'Failed to process CSV file: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download CSV template
+     */
+    public function downloadTemplate()
+    {
+        $filename = 'bulk_asset_template_' . date('Y-m-d') . '.csv';
+        
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ];
+
+        $callback = function() {
+            $file = fopen('php://output', 'w');
+            
+            // CSV Headers
+            fputcsv($file, [
+                'category_name',
+                'brand_name',
+                'model',
+                'serial_number',
+                'vendor_name',
+                'location_name',
+                'status',
+                'assigned_to',
+                'department',
+                'unit_price',
+                'notes'
+            ]);
+            
+            // Example rows
+            fputcsv($file, [
+                'Laptop',
+                'Dell',
+                'Latitude 5420',
+                'SN123456789',
+                'Dell Malaysia',
+                'Office HQ',
+                'active',
+                'John Doe',
+                'IT Department',
+                '3500.00',
+                'New laptop for IT staff'
+            ]);
+            
+            fputcsv($file, [
+                'Desktop',
+                'HP',
+                'EliteDesk 800 G6',
+                'SN987654321',
+                'HP Store',
+                'Office HQ',
+                'spare',
+                '',
+                'Finance',
+                '2800.00',
+                'Spare desktop for finance team'
+            ]);
+            
+            fputcsv($file, [
+                'Monitor',
+                'Samsung',
+                '27" LED',
+                'MON2024001',
+                'Samsung Malaysia',
+                'Meeting Room A',
+                'active',
+                'Meeting Room',
+                'General',
+                '850.00',
+                ''
+            ]);
+            
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
 }
