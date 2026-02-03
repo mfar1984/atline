@@ -88,7 +88,7 @@ class AppServiceProvider extends ServiceProvider
         $guestProtectionLimit = $this->getRateLimiterSetting('guest_protection_limit', 20);
         
         // Login page rate limiter - ketat untuk guest
-        RateLimiter::for('login-page', function (Request $request) use ($loginPageLimit) {
+        RateLimiter::for('login-page', function (Request $request) use ($loginPageLimit, $loginAttemptLimit) {
             // Check if IP is banned
             if (\App\Models\BannedIp::isBanned($request->ip())) {
                 return response()->view('errors.429', [
@@ -97,11 +97,12 @@ class AppServiceProvider extends ServiceProvider
                 ], 429);
             }
 
+            $self = $this;
             return Limit::perMinute($loginPageLimit)
                 ->by($request->ip())
-                ->response(function (Request $request, array $headers) use ($loginAttemptLimit) {
+                ->response(function (Request $request, array $headers) use ($loginAttemptLimit, $self) {
                     // Auto-ban IP after exceeding limit multiple times
-                    $this->autoBanIpIfNeeded($request->ip(), $loginAttemptLimit);
+                    $self->autoBanIpIfNeeded($request->ip(), $loginAttemptLimit);
                     
                     return response()->view('errors.429', [
                         'message' => 'Terlalu banyak cubaan. Sila tunggu sebentar.',
@@ -120,11 +121,12 @@ class AppServiceProvider extends ServiceProvider
                 ], 429);
             }
 
+            $self = $this;
             return Limit::perMinute($loginAttemptLimit)
                 ->by($request->ip())
-                ->response(function (Request $request, array $headers) use ($loginAttemptLimit) {
+                ->response(function (Request $request, array $headers) use ($loginAttemptLimit, $self) {
                     // Auto-ban IP after exceeding login attempts
-                    $this->autoBanIpIfNeeded($request->ip(), $loginAttemptLimit, true);
+                    $self->autoBanIpIfNeeded($request->ip(), $loginAttemptLimit, true);
                     
                     return response()->view('errors.429', [
                         'message' => 'Terlalu banyak cubaan login. IP anda telah direkodkan. Sila tunggu 1 minit.',
