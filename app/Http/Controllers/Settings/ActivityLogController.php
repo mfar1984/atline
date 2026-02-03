@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\BannedIp;
 use App\Models\Client;
 use App\Models\Employee;
 use App\Models\User;
@@ -23,7 +24,23 @@ class ActivityLogController extends Controller
             'activeTab' => $activeTab,
         ];
 
-        if ($activeTab === 'audit') {
+        // Get banned count for badge
+        $data['bannedCount'] = BannedIp::count();
+
+        if ($activeTab === 'banned') {
+            // Banned IPs tab
+            $data['bannedIps'] = BannedIp::with('bannedByUser')
+                ->orderBy('banned_at', 'desc')
+                ->paginate(50)
+                ->withQueryString();
+
+            $data['bannedStats'] = [
+                'total' => BannedIp::count(),
+                'permanent' => BannedIp::where('is_permanent', true)->count(),
+                'temporary' => BannedIp::where('is_permanent', false)->count(),
+                'today' => BannedIp::whereDate('banned_at', today())->count(),
+            ];
+        } elseif ($activeTab === 'audit') {
             // Audit tab - User Activity Audit
             $data['users'] = User::orderBy('name')->get();
             $data['selectedUser'] = null;
@@ -410,4 +427,81 @@ class ActivityLogController extends Controller
             ];
         }
     }
+
+    /**
+     * Ban an IP address.
+     */
+    public function banIp(Request $request)
+    {
+        $request->validate([
+            'ip_address' => 'required|ip',
+            'reason' => 'required|string|max:255',
+            'is_permanent' => 'required|boolean',
+            'duration_minutes' => 'nullable|integer|min:1',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        BannedIp::banIp(
+            $request->ip_address,
+            $request->reason,
+            0, // failed_attempts
+            auth()->id(),
+            $request->boolean('is_permanent'),
+            $request->notes,
+            $request->duration_minutes ?? 60
+        );
+
+        // Log the action
+        \App\Services\ActivityLogService::log(
+            'ban_ip',
+            "Banned IP address: {$request->ip_address}",
+            'settings',
+            null,
+            ['ip_address' => $request->ip_address, 'reason' => $request->reason]
+        );
+
+        return redirect()
+            ->route('settings.activity-logs.index', ['tab' => 'banned'])
+            ->with('success', "IP address {$request->ip_address} has been banned successfully.");
+    }
+
+    /**
+     * Unban an IP address.
+     */
+    public function unbanIp(BannedIp $bannedIp)
+    {
+        $ipAddress = $bannedIp->ip_address;
+        $bannedIp->delete();
+
+        // Log the action
+        \App\Services\ActivityLogService::log(
+            'unban_ip',
+            "Unbanned IP address: {$ipAddress}",
+            'settings',
+            null,
+            ['ip_address' => $ipAddress]
+        );
+
+        return redirect()
+            ->route('settings.activity-logs.index', ['tab' => 'banned'])
+            ->with('success', "IP address {$ipAddress} has been unbanned successfully.");
+    }
+
+    /**
+     * Get ban details (for modal).
+     */
+    public function getBanDetails(BannedIp $bannedIp)
+    {
+        return response()->json([
+            'ip_address' => $bannedIp->ip_address,
+            'reason' => $bannedIp->reason,
+            'failed_attempts' => $bannedIp->failed_attempts,
+            'is_permanent' => $bannedIp->is_permanent,
+            'banned_at' => $bannedIp->banned_at->format('d/m/Y H:i:s'),
+            'expires_at' => $bannedIp->expires_at ? $bannedIp->expires_at->format('d/m/Y H:i:s') : null,
+            'banned_by' => $bannedIp->bannedByUser?->name,
+            'notes' => $bannedIp->notes,
+        ]);
+    }
+
 }

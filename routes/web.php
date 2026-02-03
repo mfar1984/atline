@@ -240,5 +240,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/activity-logs', [\App\Http\Controllers\Settings\ActivityLogController::class, 'index'])->name('activity-logs.index');
         Route::delete('/activity-logs', [\App\Http\Controllers\Settings\ActivityLogController::class, 'delete'])->name('activity-logs.delete');
         Route::post('/activity-logs/print', [\App\Http\Controllers\Settings\ActivityLogController::class, 'logPrint'])->name('activity-logs.print');
+        Route::post('/activity-logs/ban-ip', [\App\Http\Controllers\Settings\ActivityLogController::class, 'banIp'])->name('activity-logs.ban-ip');
+        Route::delete('/activity-logs/banned/{bannedIp}', [\App\Http\Controllers\Settings\ActivityLogController::class, 'unbanIp'])->name('activity-logs.unban');
+        Route::get('/activity-logs/banned/{bannedIp}', [\App\Http\Controllers\Settings\ActivityLogController::class, 'getBanDetails'])->name('activity-logs.ban-details');
     });
 });

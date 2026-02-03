@@ -39,6 +39,18 @@
                     @endif
                 </span>
             </a>
+            <a href="{{ route('settings.activity-logs.index', ['tab' => 'banned']) }}"
+               class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'banned' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
+               style="font-family: Poppins, sans-serif;">
+                <span class="inline-flex items-center gap-1">
+                    User Banned
+                    @if(isset($bannedCount) && $bannedCount > 0)
+                        <span class="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-600" style="font-size: 9px; min-width: 18px;">
+                            {{ $bannedCount }}
+                        </span>
+                    @endif
+                </span>
+            </a>
         </nav>
     </div>
 
@@ -62,6 +74,8 @@
             @include('settings.activity-logs.partials.audit')
         @elseif($activeTab === 'suspicious')
             @include('settings.activity-logs.partials.suspicious')
+        @elseif($activeTab === 'banned')
+            @include('settings.activity-logs.partials.banned')
         @endif
     </div>
 </div>

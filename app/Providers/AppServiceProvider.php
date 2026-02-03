@@ -89,9 +89,20 @@ class AppServiceProvider extends ServiceProvider
         
         // Login page rate limiter - ketat untuk guest
         RateLimiter::for('login-page', function (Request $request) use ($loginPageLimit) {
+            // Check if IP is banned
+            if (\App\Models\BannedIp::isBanned($request->ip())) {
+                return response()->view('errors.429', [
+                    'message' => 'IP anda telah dilarang akses ke sistem ini. Sila hubungi pentadbir.',
+                    'retryAfter' => 3600, // 1 hour
+                ], 429);
+            }
+
             return Limit::perMinute($loginPageLimit)
                 ->by($request->ip())
-                ->response(function (Request $request, array $headers) {
+                ->response(function (Request $request, array $headers) use ($loginAttemptLimit) {
+                    // Auto-ban IP after exceeding limit multiple times
+                    $this->autoBanIpIfNeeded($request->ip(), $loginAttemptLimit);
+                    
                     return response()->view('errors.429', [
                         'message' => 'Terlalu banyak cubaan. Sila tunggu sebentar.',
                         'retryAfter' => $headers['Retry-After'] ?? 60,
@@ -101,9 +112,20 @@ class AppServiceProvider extends ServiceProvider
         
         // Login attempt rate limiter - lebih ketat untuk POST login
         RateLimiter::for('login-attempt', function (Request $request) use ($loginAttemptLimit) {
+            // Check if IP is banned
+            if (\App\Models\BannedIp::isBanned($request->ip())) {
+                return response()->view('errors.429', [
+                    'message' => 'IP anda telah dilarang akses ke sistem ini. Sila hubungi pentadbir.',
+                    'retryAfter' => 3600, // 1 hour
+                ], 429);
+            }
+
             return Limit::perMinute($loginAttemptLimit)
                 ->by($request->ip())
-                ->response(function (Request $request, array $headers) {
+                ->response(function (Request $request, array $headers) use ($loginAttemptLimit) {
+                    // Auto-ban IP after exceeding login attempts
+                    $this->autoBanIpIfNeeded($request->ip(), $loginAttemptLimit, true);
+                    
                     return response()->view('errors.429', [
                         'message' => 'Terlalu banyak cubaan login. IP anda telah direkodkan. Sila tunggu 1 minit.',
                         'retryAfter' => $headers['Retry-After'] ?? 60,
@@ -113,12 +135,56 @@ class AppServiceProvider extends ServiceProvider
         
         // Aggressive rate limiter untuk brute force protection
         RateLimiter::for('guest-protection', function (Request $request) use ($guestProtectionLimit) {
+            // Check if IP is banned
+            if (\App\Models\BannedIp::isBanned($request->ip())) {
+                return response('IP anda dilarang akses.', 429);
+            }
+
             return Limit::perMinute($guestProtectionLimit)
                 ->by($request->ip())
                 ->response(function (Request $request, array $headers) {
                     return response('Terlalu banyak request. IP anda direkodkan.', 429, $headers);
                 });
         });
+    }
+    
+    /**
+     * Auto-ban IP if it exceeds rate limits repeatedly.
+     */
+    protected function autoBanIpIfNeeded(string $ipAddress, int $threshold, bool $isLoginAttempt = false): void
+    {
+        try {
+            // Count failed attempts in last 10 minutes
+            $recentFailures = \App\Models\ActivityLog::where('ip_address', $ipAddress)
+                ->where('action', 'login_failed')
+                ->where('created_at', '>=', now()->subMinutes(10))
+                ->count();
+
+            // Ban if threshold exceeded (e.g., 10 failed attempts in 10 minutes)
+            if ($recentFailures >= ($threshold * 2)) {
+                \App\Models\BannedIp::banIp(
+                    $ipAddress,
+                    'Automatic ban: Too many failed login attempts',
+                    $recentFailures,
+                    null, // System ban
+                    false, // Temporary
+                    "Auto-banned after {$recentFailures} failed attempts in 10 minutes",
+                    60 // 60 minutes ban
+                );
+
+                // Log the ban
+                \App\Services\ActivityLogService::log(
+                    'auto_ban_ip',
+                    "Automatically banned IP {$ipAddress} after {$recentFailures} failed attempts",
+                    'security',
+                    null,
+                    ['ip_address' => $ipAddress, 'failed_attempts' => $recentFailures]
+                );
+            }
+        } catch (\Exception $e) {
+            // Silently fail - don't break the rate limiting
+            \Log::error('Auto-ban failed: ' . $e->getMessage());
+        }
     }
     
     /**
