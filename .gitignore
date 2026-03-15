@@ -1,0 +1,66 @@
+# Kiro
+/.kiro
+
+# cPanel / Hosting
+/.well-known
+.htaccess
+
+# Laravel
+/.phpunit.cache
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+/storage/app/temp/*
+!/storage/app/temp/.gitignore
+
+# Cache
+/bootstrap/cache/*
+!/bootstrap/cache/.gitignore
+/storage/framework/cache/*
+!/storage/framework/cache/.gitignore
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+
+# Uploaded files (keep structure, ignore content)
+/storage/app/public/attachments/*
+!/storage/app/public/attachments/.gitignore
+/storage/app/public/downloads/*
+!/storage/app/public/downloads/.gitignore
+/storage/app/public/branding/*
+!/storage/app/public/branding/.gitignore
+
+# Public storage link
+/public/storage
+
+# Testing
+/coverage
+/.phpunit.cache
+
+# Build artifacts
+/public/mix-manifest.json
