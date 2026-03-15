@@ -393,13 +393,20 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     
     xhr.addEventListener('load', function() {
         if (xhr.status === 200) {
-            const response = JSON.parse(xhr.responseText);
-            if (response.success) {
-                // Close modal and reload page to see upload progress in table
-                closeUploadModal();
-                window.location.reload();
-            } else {
-                alert(response.message || 'Upload failed. Please try again.');
+            try {
+                const response = JSON.parse(xhr.responseText);
+                if (response.success) {
+                    // Close modal and reload page to see upload progress in table
+                    closeUploadModal();
+                    window.location.reload();
+                } else {
+                    alert(response.message || 'Upload failed. Please try again.');
+                    resetUploadBtn();
+                }
+            } catch(e) {
+                console.error('JSON parse error:', e);
+                console.error('Response text:', xhr.responseText);
+                alert('Upload failed. Invalid response from server.');
                 resetUploadBtn();
             }
         } else {
@@ -407,7 +414,8 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
                 const response = JSON.parse(xhr.responseText);
                 alert(response.message || 'Upload failed. Please try again.');
             } catch(e) {
-                alert('Upload failed. Please try again.');
+                console.error('Error response:', xhr.status, xhr.responseText);
+                alert('Upload failed with status ' + xhr.status + '. Please check console for details.');
             }
             resetUploadBtn();
         }
@@ -420,6 +428,8 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     
     xhr.open('POST', '{{ route("internal.download.store") }}');
     xhr.setRequestHeader('X-CSRF-TOKEN', '{{ csrf_token() }}');
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
     xhr.send(formData);
 });
 
