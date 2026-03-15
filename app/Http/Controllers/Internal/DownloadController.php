@@ -45,138 +45,69 @@ class DownloadController extends Controller
     }
 
     public function store(Request $request)
-        {
-            // Log at the very beginning to confirm we reach this method
-            \Log::info('=== STORE METHOD CALLED ===');
-            
-            // Log PHP configuration
-            \Log::info('PHP Configuration', [
-                'upload_tmp_dir' => ini_get('upload_tmp_dir'),
-                'sys_temp_dir' => sys_get_temp_dir(),
-                'upload_max_filesize' => ini_get('upload_max_filesize'),
-                'post_max_size' => ini_get('post_max_size'),
-                'file_uploads' => ini_get('file_uploads'),
-            ]);
-            
-            \Log::info('Request data', [
-                'has_file' => $request->hasFile('file'),
-                'name' => $request->input('name'),
-                'all_input' => $request->all(),
-                'files' => $request->allFiles(),
-            ]);
+    {
+        // Validate input
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'file' => 'required|file|max:102400', // 100MB
+        ]);
 
-            // Validate input first
-            try {
-                $request->validate([
-                    'name' => 'required|string|max:255',
-                ]);
-                \Log::info('Name validation passed');
-            } catch (\Exception $e) {
-                \Log::error('Name validation failed', ['error' => $e->getMessage()]);
-                throw $e;
-            }
-
-            // Manual file handling to bypass upload_tmp_dir issue
-            if (!$request->hasFile('file')) {
-                \Log::error('No file in request');
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No file was uploaded.',
-                ], 422);
-            }
-
-            $file = $request->file('file');
-            \Log::info('File object retrieved', [
-                'name' => $file->getClientOriginalName(),
-                'size' => $file->getSize(),
-                'error' => $file->getError(),
-                'is_valid' => $file->isValid(),
-            ]);
-
-            // Validate file manually
-            if (!$file->isValid()) {
-                \Log::error('File is not valid', ['error_code' => $file->getError()]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'File upload failed. Error code: ' . $file->getError(),
-                ], 422);
-            }
-
-            // Validate file size (100MB max)
-            if ($file->getSize() > 104857600) {
-                \Log::error('File too large', ['size' => $file->getSize()]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'File size must not exceed 100MB.',
-                ], 422);
-            }
-
-            // Check R2 configuration first
-            $storageSetting = IntegrationSetting::where('integration_type', 'storage')->first();
-            if (!$storageSetting || !$storageSetting->isConnected()) {
-                \Log::error('R2 not configured');
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cloudflare R2 not configured. Please configure storage in Settings > Integrations > Storage.',
-                ], 400);
-            }
-
-            \Log::info('Creating download record');
-            $download = Download::create([
-                'name' => $request->name,
-                'original_filename' => $file->getClientOriginalName(),
-                'file_type' => $file->getMimeType(),
-                'file_extension' => strtolower($file->getClientOriginalExtension()),
-                'file_size' => $file->getSize(),
-                'status' => 'pending',
-                'upload_progress' => 0,
-                'uploaded_by' => auth()->id(),
-            ]);
-            \Log::info('Download record created', ['id' => $download->id]);
-
-            // Store file temporarily
-            try {
-                \Log::info('Attempting to store file temporarily');
-                $tempPath = $file->store('temp/downloads', 'local');
-                \Log::info('File stored temporarily', ['path' => $tempPath]);
-            } catch (\Exception $e) {
-                \Log::error('Failed to store temp file', [
-                    'error' => $e->getMessage(),
-                    'file' => $file->getClientOriginalName(),
-                ]);
-
-                $download->delete();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to process file. Please try again.',
-                ], 500);
-            }
-
-            $downloadId = $download->id;
-
-            // Use queue for background processing
-            \Log::info('Dispatching upload job');
-            \App\Jobs\UploadToR2Job::dispatch($downloadId, $tempPath);
-
-            // Log upload activity
-            try {
-                ActivityLogService::logUpload('internal_downloads', "Uploaded file {$download->name}", [
-                    'file_name' => $download->original_filename,
-                    'file_type' => $download->file_type,
-                    'file_size' => $download->file_size,
-                ]);
-            } catch (\Exception $e) {
-                \Log::error('Activity logging failed: ' . $e->getMessage());
-            }
-
-            \Log::info('=== STORE METHOD COMPLETED SUCCESSFULLY ===');
+        // Check R2 configuration
+        $storageSetting = IntegrationSetting::where('integration_type', 'storage')->first();
+        if (!$storageSetting || !$storageSetting->isConnected()) {
             return response()->json([
-                'success' => true,
-                'message' => 'File queued for upload',
-                'download_id' => $downloadId,
-            ]);
+                'success' => false,
+                'message' => 'Cloudflare R2 not configured. Please configure storage in Settings > Integrations > Storage.',
+            ], 400);
         }
+
+        $file = $request->file('file');
+
+        // Create download record
+        $download = Download::create([
+            'name' => $request->name,
+            'original_filename' => $file->getClientOriginalName(),
+            'file_type' => $file->getMimeType(),
+            'file_extension' => strtolower($file->getClientOriginalExtension()),
+            'file_size' => $file->getSize(),
+            'status' => 'pending',
+            'upload_progress' => 0,
+            'uploaded_by' => auth()->id(),
+        ]);
+
+        // Store file temporarily
+        try {
+            $tempPath = $file->store('temp/downloads', 'local');
+        } catch (\Exception $e) {
+            $download->delete();
+            \Log::error('Failed to store temp file: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process file. Please try again.',
+            ], 500);
+        }
+
+        // Dispatch background job to upload to R2
+        \App\Jobs\UploadToR2Job::dispatch($download->id, $tempPath);
+
+        // Log activity
+        try {
+            ActivityLogService::logUpload('internal_downloads', "Uploaded file {$download->name}", [
+                'file_name' => $download->original_filename,
+                'file_type' => $download->file_type,
+                'file_size' => $download->file_size,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Activity logging failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'File queued for upload',
+            'download_id' => $download->id,
+        ]);
+    }
 
     protected function processUploadToR2(Download $download, string $tempPath)
     {
@@ -346,7 +277,7 @@ class DownloadController extends Controller
                         ]);
                     }
                 } catch (\Exception $e) {
-                    // Continue with deletion from database
+                    \Log::error('Failed to delete from R2: ' . $e->getMessage());
                 }
             }
         }
