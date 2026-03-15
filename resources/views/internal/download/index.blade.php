@@ -428,11 +428,12 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
                     for (const field in response.errors) {
                         errorMsg += '- ' + response.errors[field].join(', ') + '\n';
                     }
+                    console.error('Validation errors:', response.errors);
+                    console.error('Full error details:', JSON.stringify(response.errors, null, 2));
                 } else {
                     errorMsg = response.message || 'Validation failed. Please check your input.';
                 }
                 alert(errorMsg);
-                console.error('Validation errors:', response.errors);
             } catch(e) {
                 console.error('Error response:', xhr.status, xhr.responseText);
                 alert('Validation failed. Please check your input.');
