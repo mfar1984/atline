@@ -561,7 +561,7 @@ class IntegrationController extends Controller
         }
 
         try {
-            $s3Client = new \Aws\S3\S3Client([
+            $clientConfig = [
                 'version' => 'latest',
                 'region' => 'auto',
                 'endpoint' => "https://{$credentials['account_id']}.r2.cloudflarestorage.com",
@@ -569,7 +569,17 @@ class IntegrationController extends Controller
                     'key' => $credentials['access_key_id'],
                     'secret' => $credentials['secret_access_key'],
                 ],
-            ]);
+                'use_path_style_endpoint' => true, // Force path-style for R2
+            ];
+            
+            // Disable SSL verification for local development
+            if (config('app.env') === 'local') {
+                $clientConfig['http'] = [
+                    'verify' => false
+                ];
+            }
+            
+            $s3Client = new \Aws\S3\S3Client($clientConfig);
             
             // Try to list objects to verify connection
             $s3Client->listObjectsV2([

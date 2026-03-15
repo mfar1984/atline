@@ -145,16 +145,8 @@ class AttachmentService
         }
 
         try {
-            // Create S3 client
-            $s3Client = new S3Client([
-                'version' => 'latest',
-                'region' => 'auto',
-                'endpoint' => "https://{$credentials['account_id']}.r2.cloudflarestorage.com",
-                'credentials' => [
-                    'key' => $credentials['access_key_id'],
-                    'secret' => $credentials['secret_access_key'],
-                ],
-            ]);
+            // Create S3 client with SSL configuration
+            $s3Client = $this->createS3Client($credentials);
 
             // Generate object path
             $folder = strtolower(class_basename($model)) . 's';
@@ -263,15 +255,7 @@ class AttachmentService
                 return;
             }
 
-            $s3Client = new S3Client([
-                'version' => 'latest',
-                'region' => 'auto',
-                'endpoint' => "https://{$credentials['account_id']}.r2.cloudflarestorage.com",
-                'credentials' => [
-                    'key' => $credentials['access_key_id'],
-                    'secret' => $credentials['secret_access_key'],
-                ],
-            ]);
+            $s3Client = $this->createS3Client($credentials);
 
             $s3Client->deleteObject([
                 'Bucket' => $credentials['bucket_name'],
@@ -302,4 +286,31 @@ class AttachmentService
     {
         return SystemSetting::getValue('defaults', 'attachment_max_size', 10);
     }
+
+    /**
+     * Create S3 Client for R2 with proper SSL configuration
+     */
+    protected function createS3Client(array $credentials): S3Client
+    {
+        $clientConfig = [
+            'version' => 'latest',
+            'region' => 'auto',
+            'endpoint' => "https://{$credentials['account_id']}.r2.cloudflarestorage.com",
+            'credentials' => [
+                'key' => $credentials['access_key_id'],
+                'secret' => $credentials['secret_access_key'],
+            ],
+            'use_path_style_endpoint' => true, // Force path-style for R2
+        ];
+        
+        // Disable SSL verification for local development
+        if (config('app.env') === 'local') {
+            $clientConfig['http'] = [
+                'verify' => false
+            ];
+        }
+        
+        return new S3Client($clientConfig);
+    }
 }
+

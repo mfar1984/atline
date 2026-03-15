@@ -189,15 +189,7 @@ class AttachmentController extends Controller
                 abort(500, 'R2 storage credentials incomplete');
             }
 
-            $s3Client = new S3Client([
-                'version' => 'latest',
-                'region' => 'auto',
-                'endpoint' => "https://{$credentials['account_id']}.r2.cloudflarestorage.com",
-                'credentials' => [
-                    'key' => $credentials['access_key_id'],
-                    'secret' => $credentials['secret_access_key'],
-                ],
-            ]);
+            $s3Client = $this->createS3Client($credentials);
             
             // Generate presigned URL for download
             $cmd = $s3Client->getCommand('GetObject', [
@@ -245,5 +237,31 @@ class AttachmentController extends Controller
 
         return redirect()->route('external.attachments.index')
             ->with('success', 'Attachment deleted successfully.');
+    }
+
+    /**
+     * Create S3 Client for R2 with proper SSL configuration
+     */
+    protected function createS3Client(array $credentials): S3Client
+    {
+        $clientConfig = [
+            'version' => 'latest',
+            'region' => 'auto',
+            'endpoint' => "https://{$credentials['account_id']}.r2.cloudflarestorage.com",
+            'credentials' => [
+                'key' => $credentials['access_key_id'],
+                'secret' => $credentials['secret_access_key'],
+            ],
+            'use_path_style_endpoint' => true, // Force path-style for R2
+        ];
+        
+        // Disable SSL verification for local development
+        if (config('app.env') === 'local') {
+            $clientConfig['http'] = [
+                'verify' => false
+            ];
+        }
+        
+        return new S3Client($clientConfig);
     }
 }
