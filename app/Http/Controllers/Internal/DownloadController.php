@@ -45,58 +45,75 @@ class DownloadController extends Controller
     }
 
     public function store(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'file' => 'required|file|max:102400',
-        ]);
-
-        // Check R2 configuration first
-        $storageSetting = IntegrationSetting::where('integration_type', 'storage')->first();
-        if (!$storageSetting || !$storageSetting->isConnected()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cloudflare R2 not configured. Please configure storage in Settings > Integrations > Storage.',
-            ], 400);
-        }
-
-        $file = $request->file('file');
-        
-        $download = Download::create([
-            'name' => $request->name,
-            'original_filename' => $file->getClientOriginalName(),
-            'file_type' => $file->getMimeType(),
-            'file_extension' => strtolower($file->getClientOriginalExtension()),
-            'file_size' => $file->getSize(),
-            'status' => 'pending',
-            'upload_progress' => 0,
-            'uploaded_by' => auth()->id(),
-        ]);
-
-        // Store file temporarily
-        $tempPath = $file->store('temp/downloads', 'local');
-        $downloadId = $download->id;
-
-        // Use queue for background processing
-        \App\Jobs\UploadToR2Job::dispatch($downloadId, $tempPath);
-
-        // Log upload activity
-        try {
-            ActivityLogService::logUpload('internal_downloads', "Uploaded file {$download->name}", [
-                'file_name' => $download->original_filename,
-                'file_type' => $download->file_type,
-                'file_size' => $download->file_size,
+        {
+            // Debug: Log PHP upload configuration and file details
+            \Log::info('Upload attempt - PHP Config', [
+                'upload_tmp_dir' => ini_get('upload_tmp_dir'),
+                'sys_temp_dir' => sys_get_temp_dir(),
+                'tmp_writable' => is_writable(sys_get_temp_dir()),
             ]);
-        } catch (\Exception $e) {
-            \Log::error('Activity logging failed: ' . $e->getMessage());
-        }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'File queued for upload',
-            'download_id' => $downloadId,
-        ]);
-    }
+            if ($request->hasFile('file')) {
+                $file = $request->file('file');
+                \Log::info('Upload attempt - File details', [
+                    'name' => $file->getClientOriginalName(),
+                    'size' => $file->getSize(),
+                    'error' => $file->getError(),
+                    'is_valid' => $file->isValid(),
+                ]);
+            }
+
+            $request->validate([
+                'name' => 'required|string|max:255',
+                'file' => 'required|file|max:102400',
+            ]);
+
+            // Check R2 configuration first
+            $storageSetting = IntegrationSetting::where('integration_type', 'storage')->first();
+            if (!$storageSetting || !$storageSetting->isConnected()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cloudflare R2 not configured. Please configure storage in Settings > Integrations > Storage.',
+                ], 400);
+            }
+
+            $file = $request->file('file');
+
+            $download = Download::create([
+                'name' => $request->name,
+                'original_filename' => $file->getClientOriginalName(),
+                'file_type' => $file->getMimeType(),
+                'file_extension' => strtolower($file->getClientOriginalExtension()),
+                'file_size' => $file->getSize(),
+                'status' => 'pending',
+                'upload_progress' => 0,
+                'uploaded_by' => auth()->id(),
+            ]);
+
+            // Store file temporarily
+            $tempPath = $file->store('temp/downloads', 'local');
+            $downloadId = $download->id;
+
+            // Use queue for background processing
+            \App\Jobs\UploadToR2Job::dispatch($downloadId, $tempPath);
+
+            // Log upload activity
+            try {
+                ActivityLogService::logUpload('internal_downloads', "Uploaded file {$download->name}", [
+                    'file_name' => $download->original_filename,
+                    'file_type' => $download->file_type,
+                    'file_size' => $download->file_size,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error('Activity logging failed: ' . $e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'File queued for upload',
+                'download_id' => $downloadId,
+            ]);
+        }
 
     protected function processUploadToR2(Download $download, string $tempPath)
     {
