@@ -354,13 +354,18 @@ class DownloadController extends Controller
                 'key' => $credentials['access_key_id'],
                 'secret' => $credentials['secret_access_key'],
             ],
-            'use_path_style_endpoint' => true, // Force path-style for R2
+            'use_path_style_endpoint' => true,
+            'bucket_endpoint' => true,
         ];
         
         // Disable SSL verification for local development
         if (config('app.env') === 'local') {
             $clientConfig['http'] = [
-                'verify' => false
+                'verify' => false,
+                'curl' => [
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => false,
+                ],
             ];
         }
         
