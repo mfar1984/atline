@@ -46,6 +46,15 @@ class DownloadController extends Controller
 
     public function store(Request $request)
         {
+            // Workaround: Set upload_tmp_dir if not configured
+            if (empty(ini_get('upload_tmp_dir'))) {
+                $tmpDir = sys_get_temp_dir();
+                if (is_writable($tmpDir)) {
+                    ini_set('upload_tmp_dir', $tmpDir);
+                    \Log::info('Set upload_tmp_dir to: ' . $tmpDir);
+                }
+            }
+
             // Debug: Log PHP upload configuration and file details
             \Log::info('Upload attempt - PHP Config', [
                 'upload_tmp_dir' => ini_get('upload_tmp_dir'),
