@@ -48,6 +48,16 @@ class DownloadController extends Controller
         {
             // Log at the very beginning to confirm we reach this method
             \Log::info('=== STORE METHOD CALLED ===');
+            
+            // Log PHP configuration
+            \Log::info('PHP Configuration', [
+                'upload_tmp_dir' => ini_get('upload_tmp_dir'),
+                'sys_temp_dir' => sys_get_temp_dir(),
+                'upload_max_filesize' => ini_get('upload_max_filesize'),
+                'post_max_size' => ini_get('post_max_size'),
+                'file_uploads' => ini_get('file_uploads'),
+            ]);
+            
             \Log::info('Request data', [
                 'has_file' => $request->hasFile('file'),
                 'name' => $request->input('name'),
