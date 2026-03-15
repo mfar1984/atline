@@ -386,6 +386,16 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     const formData = new FormData(this);
     const uploadBtn = document.getElementById('uploadBtn');
     
+    // Debug: Log form data
+    console.log('Form data being sent:');
+    for (let pair of formData.entries()) {
+        if (pair[1] instanceof File) {
+            console.log(pair[0] + ': File(' + pair[1].name + ', ' + pair[1].size + ' bytes)');
+        } else {
+            console.log(pair[0] + ': ' + pair[1]);
+        }
+    }
+    
     uploadBtn.disabled = true;
     uploadBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" style="font-size: 14px;">progress_activity</span> UPLOADING...';
     
@@ -409,6 +419,25 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
                 alert('Upload failed. Invalid response from server.');
                 resetUploadBtn();
             }
+        } else if (xhr.status === 422) {
+            // Validation error
+            try {
+                const response = JSON.parse(xhr.responseText);
+                let errorMsg = 'Validation failed:\n';
+                if (response.errors) {
+                    for (const field in response.errors) {
+                        errorMsg += '- ' + response.errors[field].join(', ') + '\n';
+                    }
+                } else {
+                    errorMsg = response.message || 'Validation failed. Please check your input.';
+                }
+                alert(errorMsg);
+                console.error('Validation errors:', response.errors);
+            } catch(e) {
+                console.error('Error response:', xhr.status, xhr.responseText);
+                alert('Validation failed. Please check your input.');
+            }
+            resetUploadBtn();
         } else {
             try {
                 const response = JSON.parse(xhr.responseText);
