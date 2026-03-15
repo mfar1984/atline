@@ -46,13 +46,29 @@ class DownloadController extends Controller
 
     public function store(Request $request)
         {
-            // Validate input first
-            $request->validate([
-                'name' => 'required|string|max:255',
+            // Log at the very beginning to confirm we reach this method
+            \Log::info('=== STORE METHOD CALLED ===');
+            \Log::info('Request data', [
+                'has_file' => $request->hasFile('file'),
+                'name' => $request->input('name'),
+                'all_input' => $request->all(),
+                'files' => $request->allFiles(),
             ]);
+
+            // Validate input first
+            try {
+                $request->validate([
+                    'name' => 'required|string|max:255',
+                ]);
+                \Log::info('Name validation passed');
+            } catch (\Exception $e) {
+                \Log::error('Name validation failed', ['error' => $e->getMessage()]);
+                throw $e;
+            }
 
             // Manual file handling to bypass upload_tmp_dir issue
             if (!$request->hasFile('file')) {
+                \Log::error('No file in request');
                 return response()->json([
                     'success' => false,
                     'message' => 'No file was uploaded.',
@@ -60,17 +76,25 @@ class DownloadController extends Controller
             }
 
             $file = $request->file('file');
+            \Log::info('File object retrieved', [
+                'name' => $file->getClientOriginalName(),
+                'size' => $file->getSize(),
+                'error' => $file->getError(),
+                'is_valid' => $file->isValid(),
+            ]);
 
             // Validate file manually
             if (!$file->isValid()) {
+                \Log::error('File is not valid', ['error_code' => $file->getError()]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'File upload failed. Please try again.',
+                    'message' => 'File upload failed. Error code: ' . $file->getError(),
                 ], 422);
             }
 
             // Validate file size (100MB max)
             if ($file->getSize() > 104857600) {
+                \Log::error('File too large', ['size' => $file->getSize()]);
                 return response()->json([
                     'success' => false,
                     'message' => 'File size must not exceed 100MB.',
@@ -80,12 +104,14 @@ class DownloadController extends Controller
             // Check R2 configuration first
             $storageSetting = IntegrationSetting::where('integration_type', 'storage')->first();
             if (!$storageSetting || !$storageSetting->isConnected()) {
+                \Log::error('R2 not configured');
                 return response()->json([
                     'success' => false,
                     'message' => 'Cloudflare R2 not configured. Please configure storage in Settings > Integrations > Storage.',
                 ], 400);
             }
 
+            \Log::info('Creating download record');
             $download = Download::create([
                 'name' => $request->name,
                 'original_filename' => $file->getClientOriginalName(),
@@ -96,10 +122,13 @@ class DownloadController extends Controller
                 'upload_progress' => 0,
                 'uploaded_by' => auth()->id(),
             ]);
+            \Log::info('Download record created', ['id' => $download->id]);
 
             // Store file temporarily
             try {
+                \Log::info('Attempting to store file temporarily');
                 $tempPath = $file->store('temp/downloads', 'local');
+                \Log::info('File stored temporarily', ['path' => $tempPath]);
             } catch (\Exception $e) {
                 \Log::error('Failed to store temp file', [
                     'error' => $e->getMessage(),
@@ -117,6 +146,7 @@ class DownloadController extends Controller
             $downloadId = $download->id;
 
             // Use queue for background processing
+            \Log::info('Dispatching upload job');
             \App\Jobs\UploadToR2Job::dispatch($downloadId, $tempPath);
 
             // Log upload activity
@@ -130,6 +160,7 @@ class DownloadController extends Controller
                 \Log::error('Activity logging failed: ' . $e->getMessage());
             }
 
+            \Log::info('=== STORE METHOD COMPLETED SUCCESSFULLY ===');
             return response()->json([
                 'success' => true,
                 'message' => 'File queued for upload',
