@@ -46,6 +46,28 @@ class DownloadController extends Controller
 
     public function store(Request $request)
     {
+        // Check for PHP upload errors first
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            if (!$file->isValid()) {
+                $errorCode = $file->getError();
+                $errorMessages = [
+                    UPLOAD_ERR_INI_SIZE => 'The file exceeds the upload_max_filesize directive in php.ini',
+                    UPLOAD_ERR_FORM_SIZE => 'The file exceeds the MAX_FILE_SIZE directive in the HTML form',
+                    UPLOAD_ERR_PARTIAL => 'The file was only partially uploaded',
+                    UPLOAD_ERR_NO_FILE => 'No file was uploaded',
+                    UPLOAD_ERR_NO_TMP_DIR => 'Missing a temporary folder on the server',
+                    UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+                    UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the file upload',
+                ];
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => $errorMessages[$errorCode] ?? 'File upload failed with error code: ' . $errorCode,
+                ], 422);
+            }
+        }
+        
         $request->validate([
             'name' => 'required|string|max:255',
             'file' => 'required|file|max:102400',
