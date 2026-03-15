@@ -570,7 +570,6 @@ class IntegrationController extends Controller
                     'secret' => $credentials['secret_access_key'],
                 ],
                 'use_path_style_endpoint' => true,
-                'bucket_endpoint' => true, // Additional flag for R2
             ];
             
             // Disable SSL verification for local development

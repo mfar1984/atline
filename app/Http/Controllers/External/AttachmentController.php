@@ -253,7 +253,6 @@ class AttachmentController extends Controller
                 'secret' => $credentials['secret_access_key'],
             ],
             'use_path_style_endpoint' => true,
-            'bucket_endpoint' => true,
         ];
         
         // Disable SSL verification for local development
