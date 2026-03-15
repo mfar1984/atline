@@ -46,36 +46,36 @@ class DownloadController extends Controller
 
     public function store(Request $request)
         {
-            // Workaround: Set upload_tmp_dir if not configured
-            if (empty(ini_get('upload_tmp_dir'))) {
-                $tmpDir = sys_get_temp_dir();
-                if (is_writable($tmpDir)) {
-                    ini_set('upload_tmp_dir', $tmpDir);
-                    \Log::info('Set upload_tmp_dir to: ' . $tmpDir);
-                }
-            }
-
-            // Debug: Log PHP upload configuration and file details
-            \Log::info('Upload attempt - PHP Config', [
-                'upload_tmp_dir' => ini_get('upload_tmp_dir'),
-                'sys_temp_dir' => sys_get_temp_dir(),
-                'tmp_writable' => is_writable(sys_get_temp_dir()),
-            ]);
-
-            if ($request->hasFile('file')) {
-                $file = $request->file('file');
-                \Log::info('Upload attempt - File details', [
-                    'name' => $file->getClientOriginalName(),
-                    'size' => $file->getSize(),
-                    'error' => $file->getError(),
-                    'is_valid' => $file->isValid(),
-                ]);
-            }
-
+            // Validate input first
             $request->validate([
                 'name' => 'required|string|max:255',
-                'file' => 'required|file|max:102400',
             ]);
+
+            // Manual file handling to bypass upload_tmp_dir issue
+            if (!$request->hasFile('file')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No file was uploaded.',
+                ], 422);
+            }
+
+            $file = $request->file('file');
+
+            // Validate file manually
+            if (!$file->isValid()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'File upload failed. Please try again.',
+                ], 422);
+            }
+
+            // Validate file size (100MB max)
+            if ($file->getSize() > 104857600) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'File size must not exceed 100MB.',
+                ], 422);
+            }
 
             // Check R2 configuration first
             $storageSetting = IntegrationSetting::where('integration_type', 'storage')->first();
@@ -85,8 +85,6 @@ class DownloadController extends Controller
                     'message' => 'Cloudflare R2 not configured. Please configure storage in Settings > Integrations > Storage.',
                 ], 400);
             }
-
-            $file = $request->file('file');
 
             $download = Download::create([
                 'name' => $request->name,
@@ -100,7 +98,22 @@ class DownloadController extends Controller
             ]);
 
             // Store file temporarily
-            $tempPath = $file->store('temp/downloads', 'local');
+            try {
+                $tempPath = $file->store('temp/downloads', 'local');
+            } catch (\Exception $e) {
+                \Log::error('Failed to store temp file', [
+                    'error' => $e->getMessage(),
+                    'file' => $file->getClientOriginalName(),
+                ]);
+
+                $download->delete();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to process file. Please try again.',
+                ], 500);
+            }
+
             $downloadId = $download->id;
 
             // Use queue for background processing
