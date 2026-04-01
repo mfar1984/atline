@@ -106,6 +106,11 @@ class ConfigurationController extends Controller
             'rate_limit_login_page' => 'required|integer|min:5|max:60',
             'rate_limit_login_attempt' => 'required|integer|min:3|max:20',
             'rate_limit_guest_protection' => 'required|integer|min:10|max:100',
+            
+            // Help Line
+            'helpline_whatsapp' => 'nullable|string|max:20',
+            'helpline_telegram' => 'nullable|string|max:50',
+            'helpline_email' => 'nullable|email|max:255',
         ]);
         
         // Company settings
@@ -151,6 +156,12 @@ class ConfigurationController extends Controller
         SystemSetting::setValue('rate_limiter', 'login_page_limit', $request->rate_limit_login_page, 'integer');
         SystemSetting::setValue('rate_limiter', 'login_attempt_limit', $request->rate_limit_login_attempt, 'integer');
         SystemSetting::setValue('rate_limiter', 'guest_protection_limit', $request->rate_limit_guest_protection, 'integer');
+        
+        // Help Line settings
+        SystemSetting::setValue('helpline', 'whatsapp', $request->helpline_whatsapp ?? '');
+        SystemSetting::setValue('helpline', 'telegram', $request->helpline_telegram ?? '');
+        SystemSetting::setValue('helpline', 'email', $request->helpline_email ?? '');
+        SystemSetting::setValue('helpline', 'widget_enabled', $request->has('helpline_widget_enabled') ? '1' : '0', 'boolean');
         
         // Clear cache
         SystemSetting::clearCache();
