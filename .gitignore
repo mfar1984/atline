@@ -64,3 +64,6 @@ Thumbs.db
 
 # Build artifacts
 /public/mix-manifest.json
+
+# Flutter Android app (separate project, do not push)
+/applications

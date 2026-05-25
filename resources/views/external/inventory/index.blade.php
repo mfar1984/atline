@@ -12,6 +12,15 @@
             <p class="text-xs text-gray-500 mt-0.5">Manage your IT assets across projects</p>
         </div>
         <div class="flex items-center gap-2">
+            @permission('external_inventory.delete')
+            <!-- Bulk Delete Button - hidden until checkbox selected -->
+            <button type="button" id="bulkDeleteBtn" onclick="confirmBulkDelete()" 
+               class="hidden inline-flex items-center gap-2 px-3 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition"
+               style="min-height: 32px;">
+                <span class="material-symbols-outlined" style="font-size: 14px;">delete_sweep</span>
+                <span id="bulkDeleteLabel">DELETE SELECTED</span>
+            </button>
+            @endpermission
             @permission('external_inventory.create')
             <a href="{{ route('external.inventory.create') }}" 
                class="inline-flex items-center gap-2 px-3 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition"
@@ -98,8 +107,14 @@
     @endif
 
     <div class="px-6">
+        @php
+            $selectAllCheckbox = auth()->user()->hasPermission('external_inventory.delete')
+                ? '<input type="checkbox" id="selectAllCheckbox" class="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer" onchange="toggleSelectAll(this)">'
+                : '';
+        @endphp
         <x-ui.data-table
             :headers="[
+                ['label' => $selectAllCheckbox, 'align' => 'text-center', 'width' => 'w-10'],
                 ['label' => 'Asset', 'align' => 'text-left'],
                 ['label' => 'Project', 'align' => 'text-left'],
                 ['label' => 'Category / Brand', 'align' => 'text-left'],
@@ -111,7 +126,13 @@
             empty-message="No assets found."
         >
             @forelse($assets as $asset)
-            <tr class="hover:bg-gray-50">
+            <tr class="hover:bg-gray-50 asset-row" data-id="{{ $asset->id }}">
+                <td class="px-4 py-4 whitespace-nowrap text-center w-10">
+                    @if(auth()->user()->hasPermission('external_inventory.delete'))
+                    <input type="checkbox" class="asset-checkbox w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer" 
+                           value="{{ $asset->id }}" onchange="updateBulkDeleteBtn()">
+                    @endif
+                </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     <div class="text-xs font-medium text-blue-600" style="font-family: Poppins, sans-serif;">
                         {{ $asset->asset_tag }}
@@ -161,6 +182,42 @@
 
     <div class="px-6 py-3">
         <x-ui.custom-pagination :paginator="$assets" record-label="assets" />
+    </div>
+</div>
+
+<!-- Bulk Delete Confirm Modal -->
+<div id="bulkDeleteConfirmModal" class="hidden fixed inset-0 flex items-center justify-center" style="background-color: rgba(0,0,0,0.5) !important; z-index: 9999 !important;">
+    <div style="background-color: #ffffff !important; border-radius: 12px !important; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25) !important; width: 100% !important; max-width: 420px !important; margin: 16px !important; overflow: hidden !important;" onclick="event.stopPropagation()">
+        <!-- Header -->
+        <div style="padding: 16px 20px !important; border-bottom: 1px solid #fee2e2 !important; display: flex !important; align-items: center !important; gap: 12px !important; background-color: #fef2f2 !important;">
+            <div style="width: 36px !important; height: 36px !important; border-radius: 8px !important; background-color: #ef4444 !important; display: flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important;">
+                <span class="material-symbols-outlined" style="font-size: 20px !important; color: #ffffff !important;">delete_sweep</span>
+            </div>
+            <h3 style="font-size: 14px !important; font-weight: 600 !important; color: #991b1b !important; font-family: Poppins, sans-serif !important; margin: 0 !important;">Confirm Bulk Delete</h3>
+        </div>
+        <!-- Body -->
+        <div style="padding: 20px !important;">
+            <p style="font-size: 13px !important; color: #374151 !important; font-family: Poppins, sans-serif !important; margin: 0 0 8px 0 !important;">
+                You are about to delete <strong id="bulkDeleteCount" style="color: #dc2626 !important;">0</strong> asset(s).
+            </p>
+            <p style="font-size: 12px !important; color: #6b7280 !important; font-family: Poppins, sans-serif !important; margin: 0 !important;">
+                This action cannot be undone. All attachments linked to these assets will also be permanently removed.
+            </p>
+        </div>
+        <!-- Footer -->
+        <div style="padding: 14px 20px !important; border-top: 1px solid #e5e7eb !important; display: flex !important; justify-content: flex-end !important; gap: 10px !important; background-color: #f9fafb !important;">
+            <button type="button" onclick="closeBulkDeleteConfirmModal()"
+                    style="padding: 9px 18px !important; font-size: 12px !important; font-weight: 500 !important; color: #374151 !important; background-color: #ffffff !important; border: 1px solid #d1d5db !important; border-radius: 6px !important; cursor: pointer !important; font-family: Poppins, sans-serif !important;"
+                    onmouseover="this.style.backgroundColor='#f3f4f6'" onmouseout="this.style.backgroundColor='#ffffff'">
+                Cancel
+            </button>
+            <button type="button" id="bulkDeleteConfirmBtn" onclick="executeBulkDelete()"
+                    style="padding: 9px 18px !important; font-size: 12px !important; font-weight: 500 !important; color: #ffffff !important; background-color: #ef4444 !important; border: none !important; border-radius: 6px !important; cursor: pointer !important; font-family: Poppins, sans-serif !important; display: inline-flex !important; align-items: center !important; gap: 6px !important;"
+                    onmouseover="this.style.backgroundColor='#dc2626'" onmouseout="this.style.backgroundColor='#ef4444'">
+                <span class="material-symbols-outlined" style="font-size: 14px !important;">delete</span>
+                Yes, Delete
+            </button>
+        </div>
     </div>
 </div>
 
@@ -273,6 +330,105 @@ function deleteAsset(id) {
     window.showDeleteModal('{{ route("external.inventory.index") }}/' + id);
 }
 
+// ==================== BULK DELETE ====================
+
+function updateBulkDeleteBtn() {
+    const checked = document.querySelectorAll('.asset-checkbox:checked');
+    const btn = document.getElementById('bulkDeleteBtn');
+    const label = document.getElementById('bulkDeleteLabel');
+    
+    if (!btn) return;
+    
+    if (checked.length > 0) {
+        btn.classList.remove('hidden');
+        label.textContent = 'DELETE SELECTED (' + checked.length + ')';
+    } else {
+        btn.classList.add('hidden');
+        label.textContent = 'DELETE SELECTED';
+        // Also uncheck "select all" if no items checked
+        const selectAll = document.getElementById('selectAllCheckbox');
+        if (selectAll) selectAll.checked = false;
+    }
+}
+
+function toggleSelectAll(el) {
+    const checkboxes = document.querySelectorAll('.asset-checkbox');
+    checkboxes.forEach(cb => cb.checked = el.checked);
+    updateBulkDeleteBtn();
+}
+
+function confirmBulkDelete() {
+    const checked = document.querySelectorAll('.asset-checkbox:checked');
+    if (checked.length === 0) return;
+
+    document.getElementById('bulkDeleteCount').textContent = checked.length;
+    document.getElementById('bulkDeleteConfirmModal').classList.remove('hidden');
+}
+
+function closeBulkDeleteConfirmModal() {
+    document.getElementById('bulkDeleteConfirmModal').classList.add('hidden');
+}
+
+function executeBulkDelete() {
+    const checked = document.querySelectorAll('.asset-checkbox:checked');
+    if (checked.length === 0) return;
+
+    const ids = Array.from(checked).map(cb => cb.value);
+    const btn = document.getElementById('bulkDeleteConfirmBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;animation:spin 1s linear infinite;">sync</span> Deleting...';
+
+    fetch('{{ route("external.inventory.bulk-delete") }}', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+        },
+        body: JSON.stringify({ ids: ids })
+    })
+    .then(res => res.json())
+    .then(data => {
+        closeBulkDeleteConfirmModal();
+        if (data.success) {
+            // Remove deleted rows from table
+            checked.forEach(cb => {
+                const row = cb.closest('tr');
+                if (row) row.remove();
+            });
+            updateBulkDeleteBtn();
+            // Uncheck select all
+            const selectAll = document.getElementById('selectAllCheckbox');
+            if (selectAll) selectAll.checked = false;
+            // Show success flash
+            showFlash('success', data.message);
+        } else {
+            showFlash('error', data.message || 'Failed to delete assets.');
+        }
+    })
+    .catch(() => {
+        closeBulkDeleteConfirmModal();
+        showFlash('error', 'Something went wrong. Please try again.');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">delete</span> Yes, Delete';
+    });
+}
+
+function showFlash(type, message) {
+    const colors = type === 'success'
+        ? 'bg-green-50 border-green-200 text-green-800'
+        : 'bg-red-50 border-red-200 text-red-800';
+    const div = document.createElement('div');
+    div.className = 'px-6 pb-3';
+    div.innerHTML = `<div class="px-4 py-3 ${colors} border rounded"><p class="text-xs" style="font-family:Poppins,sans-serif;">${message}</p></div>`;
+    const filterArea = document.querySelector('.px-6.py-3');
+    filterArea.parentNode.insertBefore(div, filterArea.nextSibling);
+    setTimeout(() => div.remove(), 5000);
+}
+
+// ==================== BULK ASSET MODAL ====================
+
 function openBulkAssetModal() {
     document.getElementById('bulkAssetModal').classList.remove('hidden');
 }
@@ -338,12 +494,22 @@ function formatFileSize(bytes) {
     return bytes + ' bytes';
 }
 
-// Close modal when clicking outside
+// Close bulk asset modal when clicking outside
 document.getElementById('bulkAssetModal').addEventListener('click', function(e) {
     if (e.target === this) {
         closeBulkAssetModal();
     }
 });
+
+// Close bulk delete confirm modal when clicking outside
+document.getElementById('bulkDeleteConfirmModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeBulkDeleteConfirmModal();
+    }
+});
 </script>
+<style>
+@keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
 @endpush
 @endsection

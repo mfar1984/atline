@@ -324,6 +324,54 @@ class AssetController extends Controller
     }
 
     /**
+     * Bulk delete multiple assets
+     */
+    public function bulkDelete(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer|exists:assets,id',
+        ]);
+
+        $ids = $request->input('ids');
+        $projectIds = $this->getAccessibleProjectIds();
+
+        // Get assets that belong to accessible projects
+        $query = Asset::with(['project', 'attachments'])->whereIn('id', $ids);
+        if ($projectIds !== null) {
+            $query->whereIn('project_id', $projectIds);
+        }
+
+        $assets = $query->get();
+
+        if ($assets->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'No accessible assets found.'], 403);
+        }
+
+        $deletedCount = 0;
+        foreach ($assets as $asset) {
+            try {
+                ActivityLogService::logDelete($asset, 'external_inventory', "Bulk deleted asset {$asset->asset_tag}");
+            } catch (\Exception $e) {
+                \Log::error('Activity logging failed: ' . $e->getMessage());
+            }
+
+            foreach ($asset->attachments as $attachment) {
+                $this->attachmentService->delete($attachment);
+            }
+
+            $asset->delete();
+            $deletedCount++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$deletedCount} asset(s) deleted successfully.",
+            'deleted_count' => $deletedCount,
+        ]);
+    }
+
+    /**
      * Get dynamic fields for a category (API endpoint)
      */
     public function getDynamicFields(Category $category)

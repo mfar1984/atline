@@ -14,7 +14,7 @@
                         class="px-6 py-3 {{ $header['align'] ?? 'text-left' }} text-xs font-medium text-gray-500 uppercase tracking-wider {{ $header['width'] ?? '' }} {{ isset($header['hideOnMobile']) && $header['hideOnMobile'] ? 'hide-on-mobile' : '' }} {{ isset($header['hideOnTablet']) && $header['hideOnTablet'] ? 'hide-on-tablet' : '' }}" 
                         style="font-family: Poppins, sans-serif !important; font-size: 11px !important;"
                         data-priority="{{ $header['priority'] ?? $index }}">
-                        {{ $header['label'] }}
+                        {!! $header['label'] !!}
                     </th>
                 @endforeach
                 @if($actions)
