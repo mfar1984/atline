@@ -22,9 +22,12 @@ class OrganizationController extends BaseApiController
      */
     public function index(Request $request): JsonResponse
     {
+        // select() must come BEFORE withCount(), otherwise it replaces the
+        // select list and withCount's `projects_count` subquery is dropped,
+        // silently returning 0 for every row.
         $query = Organization::query()
-            ->withCount('projects')
-            ->select('organizations.*');
+            ->select('organizations.*')
+            ->withCount('projects');
 
         if ($request->filled('search')) {
             $s = $request->query('search');

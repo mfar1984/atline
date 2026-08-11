@@ -21,10 +21,13 @@ class ProjectController extends BaseApiController
      */
     public function index(Request $request): JsonResponse
     {
+        // select() must come BEFORE withCount(): calling it after would replace
+        // the select list and drop withCount's `assets_count` subquery, making
+        // every count silently return 0.
         $query = Project::query()
+            ->select('projects.*')
             ->with(['organization:id,name'])
-            ->withCount('assets')
-            ->select('projects.*');
+            ->withCount('assets');
 
         if ($request->filled('organization_id')) {
             $query->where('projects.organization_id', (int) $request->query('organization_id'));
