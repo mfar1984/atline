@@ -232,6 +232,23 @@ Route::middleware('auth')->group(function () {
         Route::post('/integrations/weather/test', [\App\Http\Controllers\Settings\IntegrationController::class, 'testWeather'])->name('integrations.weather.test');
         Route::post('/integrations/webhook', [\App\Http\Controllers\Settings\IntegrationController::class, 'updateWebhook'])->name('integrations.webhook.update');
         Route::post('/integrations/webhook/test', [\App\Http\Controllers\Settings\IntegrationController::class, 'testWebhook'])->name('integrations.webhook.test');
+
+        // External read-only API (consumed by the ATLINE backend).
+        // The permission module/action is passed explicitly: these are POSTs
+        // without a ?tab= parameter, so auto-detection would fall back to the
+        // loose "any integration sub-module" check.
+        Route::post('/integrations/api', [\App\Http\Controllers\Settings\IntegrationController::class, 'updateApi'])
+            ->middleware('permission:settings_integrations_api,update')
+            ->name('integrations.api.update');
+        Route::post('/integrations/api/tokens', [\App\Http\Controllers\Settings\IntegrationController::class, 'createApiToken'])
+            ->middleware('permission:settings_integrations_api,create')
+            ->name('integrations.api.tokens.store');
+        Route::post('/integrations/api/tokens/{id}/revoke', [\App\Http\Controllers\Settings\IntegrationController::class, 'revokeApiToken'])
+            ->middleware('permission:settings_integrations_api,delete')
+            ->name('integrations.api.tokens.revoke');
+        Route::delete('/integrations/api/tokens/{id}', [\App\Http\Controllers\Settings\IntegrationController::class, 'deleteApiToken'])
+            ->middleware('permission:settings_integrations_api,delete')
+            ->name('integrations.api.tokens.destroy');
         
         // Recycle Bin
         Route::post('/integrations/recycle-bin/{type}/{id}/restore', [\App\Http\Controllers\Settings\IntegrationController::class, 'restoreItem'])->name('integrations.recycle-bin.restore');

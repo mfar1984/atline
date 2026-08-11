@@ -66,6 +66,7 @@ return [
         'settings_integrations_weather' => 'System Settings > Integrations > Weather',
         'settings_integrations_webhook' => 'System Settings > Integrations > Webhook',
         'settings_integrations_telegram' => 'System Settings > Integrations > Telegram',
+        'settings_integrations_api' => 'System Settings > Integrations > API',
         'settings_activity_logs' => 'System Settings > Activity Logs',
     ],
 
@@ -339,6 +340,15 @@ return [
             'delete' => false,
             'export' => false,
         ],
+        // API tab: create = issue a token, delete = revoke a token,
+        // update = change API settings (enable, IP allowlist, rate limit).
+        'settings_integrations_api' => [
+            'view' => true,
+            'create' => true,
+            'update' => true,
+            'delete' => true,
+            'export' => false,
+        ],
         'settings_activity_logs' => [
             'view' => true,
             'create' => false,
@@ -428,6 +438,7 @@ return [
             'storage' => 'settings_integrations_storage',
             'weather' => 'settings_integrations_weather',
             'webhooks' => 'settings_integrations_webhook',
+            'api' => 'settings_integrations_api',
         ],
     ],
 

@@ -66,6 +66,13 @@
                 Webhooks
             </a>
             @endpermission
+            @permission('settings_integrations_api.view')
+            <a href="{{ route('settings.integrations.index', ['tab' => 'api']) }}"
+               class="px-4 py-3 text-xs font-medium border-b-2 {{ $activeTab === 'api' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}"
+               style="font-family: Poppins, sans-serif;">
+                API
+            </a>
+            @endpermission
         </nav>
     </div>
 
@@ -97,6 +104,8 @@
             @include('settings.integrations.partials.weather')
         @elseif($activeTab === 'webhooks')
             @include('settings.integrations.partials.webhooks')
+        @elseif($activeTab === 'api')
+            @include('settings.integrations.partials.api')
         @endif
     </div>
 </div>

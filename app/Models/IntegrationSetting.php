@@ -33,6 +33,8 @@ class IntegrationSetting extends Model
     public const TYPE_WEATHER = 'weather';
     public const TYPE_WEBHOOK = 'webhook';
     public const TYPE_TELEGRAM = 'telegram';
+    /** External read-only API consumed by the ATLINE backend. */
+    public const TYPE_API = 'api';
 
     // Provider constants
     public const PROVIDER_SMTP = 'smtp';

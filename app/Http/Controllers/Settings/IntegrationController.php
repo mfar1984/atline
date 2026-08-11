@@ -31,6 +31,7 @@ class IntegrationController extends Controller
             'storage' => 'settings_integrations_storage.view',
             'weather' => 'settings_integrations_weather.view',
             'webhooks' => 'settings_integrations_webhook.view',
+            'api' => 'settings_integrations_api.view',
         ];
 
         // Get requested tab or find first accessible tab
@@ -70,6 +71,12 @@ class IntegrationController extends Controller
         $storageSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_STORAGE);
         $weatherSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_WEATHER);
         $webhookSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_WEBHOOK);
+        $apiSetting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_API);
+
+        // External API tokens (only loaded when that tab is open)
+        $apiTokens = $activeTab === 'api'
+            ? \App\Models\ApiToken::with('creator:id,name')->orderByDesc('id')->get()
+            : null;
         
         // Calculate storage usage from attachments
         $storageUsage = $this->calculateStorageUsage();
@@ -99,6 +106,8 @@ class IntegrationController extends Controller
             'storageSetting',
             'weatherSetting',
             'webhookSetting',
+            'apiSetting',
+            'apiTokens',
             'storageUsage',
             'recycleBinItems',
             'recycleBinStats',
@@ -677,6 +686,138 @@ class IntegrationController extends Controller
             $setting->save();
             return response()->json(['success' => false, 'message' => $e->getMessage()]);
         }
+    }
+
+    /* ──────────────────────────────────────────────────────────────
+     | External read-only API  (Settings › Integrations › API)
+     ────────────────────────────────────────────────────────────── */
+
+    /** Save the API gate settings: enabled, IP allowlist, rate limit. */
+    public function updateApi(Request $request)
+    {
+        $request->validate([
+            'is_active'    => 'nullable|boolean',
+            'ip_allowlist' => 'nullable|string|max:2000',
+            'rate_limit'   => 'nullable|integer|min:0|max:10000',
+        ]);
+
+        $setting = IntegrationSetting::getOrCreateByType(IntegrationSetting::TYPE_API);
+
+        $setting->provider  = 'external-read';
+        $setting->settings  = [
+            'ip_allowlist' => trim((string) $request->input('ip_allowlist', '')),
+            'rate_limit'   => (int) $request->input('rate_limit', 120),
+        ];
+        $setting->is_active = $request->boolean('is_active');
+        $setting->save();
+
+        try {
+            ActivityLogService::logSettingsUpdate('api_integration', [
+                'is_active'  => $setting->is_active,
+                'rate_limit' => $setting->settings['rate_limit'],
+                // The allowlist itself is not sensitive, but keep the log small.
+                'ip_allowlist_entries' => $setting->settings['ip_allowlist'] === ''
+                    ? 0
+                    : count(preg_split('/[\r\n,]+/', $setting->settings['ip_allowlist'], -1, PREG_SPLIT_NO_EMPTY)),
+            ]);
+        } catch (\Exception $e) {
+            // Silent fail - don't interrupt main operation
+        }
+
+        return redirect()->route('settings.integrations.index', ['tab' => 'api'])
+            ->with('success', 'API settings saved successfully.');
+    }
+
+    /**
+     * Issue a new API token. The plaintext is flashed to the session so the
+     * view can show it exactly once — it is never stored and cannot be shown
+     * again afterwards.
+     */
+    public function createApiToken(Request $request)
+    {
+        $request->validate([
+            'name'       => 'required|string|max:100',
+            'expires_in' => 'nullable|in:never,30,90,365',
+        ]);
+
+        $expiresIn = $request->input('expires_in', 'never');
+        $expiresAt = $expiresIn === 'never' ? null : now()->addDays((int) $expiresIn);
+
+        [$token, $plain] = \App\Models\ApiToken::issue(
+            trim($request->input('name')),
+            auth()->id(),
+            $expiresAt
+        );
+
+        try {
+            ActivityLogService::logSettingsUpdate('api_token_created', [
+                'token_id'   => $token->id,
+                'name'       => $token->name,
+                'expires_at' => $token->expires_at?->toDateTimeString(),
+            ]);
+        } catch (\Exception $e) {
+            // Silent fail
+        }
+
+        return redirect()->route('settings.integrations.index', ['tab' => 'api'])
+            ->with('success', 'Token created. Copy it now — it will not be shown again.')
+            ->with('new_api_token', $plain)
+            ->with('new_api_token_name', $token->name);
+    }
+
+    /** Revoke a token. Kept as a row so the audit trail stays intact. */
+    public function revokeApiToken(Request $request, int $id)
+    {
+        $token = \App\Models\ApiToken::find($id);
+        if (!$token) {
+            return redirect()->route('settings.integrations.index', ['tab' => 'api'])
+                ->with('error', 'Token not found.');
+        }
+
+        if ($token->revoked_at === null) {
+            $token->revoked_at = now();
+            $token->save();
+        }
+
+        try {
+            ActivityLogService::logSettingsUpdate('api_token_revoked', [
+                'token_id' => $token->id,
+                'name'     => $token->name,
+            ]);
+        } catch (\Exception $e) {
+            // Silent fail
+        }
+
+        return redirect()->route('settings.integrations.index', ['tab' => 'api'])
+            ->with('success', "Token \"{$token->name}\" has been revoked.");
+    }
+
+    /** Permanently remove a revoked token row. */
+    public function deleteApiToken(Request $request, int $id)
+    {
+        $token = \App\Models\ApiToken::find($id);
+        if (!$token) {
+            return redirect()->route('settings.integrations.index', ['tab' => 'api'])
+                ->with('error', 'Token not found.');
+        }
+
+        // Guard: force revoke first, so a live token cannot vanish silently.
+        if ($token->revoked_at === null) {
+            return redirect()->route('settings.integrations.index', ['tab' => 'api'])
+                ->with('error', 'Revoke the token before deleting it.');
+        }
+
+        $name = $token->name;
+        $token->delete();
+
+        try {
+            ActivityLogService::logSettingsUpdate('api_token_deleted', ['name' => $name]);
+        } catch (\Exception $e) {
+            // Silent fail
+        }
+
+        return redirect()->route('settings.integrations.index', ['tab' => 'api'])
+            ->with('success', "Token \"{$name}\" deleted.");
     }
 
     public function updateWebhook(Request $request)
