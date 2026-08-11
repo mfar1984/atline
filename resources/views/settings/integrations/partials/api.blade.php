@@ -252,7 +252,7 @@
                     ['/projects/{id}', 'Single project'],
                     ['/assets', 'External assets — ?project_id= &status= &updated_since= &page='],
                     ['/assets/{id}', 'Single asset'],
-                    ['/assets/lookup?serial=', 'Resolve an asset by serial number'],
+                    ['/assets/lookup?serial=', 'Resolve a serial number. data is always an array; ambiguous=true when the same serial is on more than one asset'],
                     ['/lookups', 'Categories, brands, locations, vendors'],
                 ] as [$path, $purpose])
                     <tr>

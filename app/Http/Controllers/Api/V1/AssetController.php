@@ -83,30 +83,58 @@ class AssetController extends BaseApiController
     /**
      * GET /api/v1/assets/lookup?serial=XXXX
      *
-     * Convenience for the field app: resolve a serial number a technician typed
-     * or scanned on site. Returns the single best match.
+     * Resolve a serial number a technician typed or scanned on site.
+     *
+     * `data` is ALWAYS an array, even for a single hit, so the consumer never
+     * has to type-check the shape.
+     *
+     * `assets.serial_number` is nullable with no unique index, so the same
+     * serial can legitimately appear on more than one asset. Returning only the
+     * "best" match would let a technician silently attach the wrong asset to a
+     * document the customer then signs. When `ambiguous` is true the consumer
+     * must ask the technician to choose.
      */
     public function lookup(Request $request): JsonResponse
     {
         $serial = trim((string) $request->query('serial', ''));
         if ($serial === '') {
             return response()->json([
-                'success' => false,
-                'message' => 'Query parameter "serial" is required.',
+                'success'     => false,
+                'message'     => 'Query parameter "serial" is required.',
+                'serial'      => null,
+                'match_count' => 0,
+                'ambiguous'   => false,
             ], 422);
         }
 
-        $asset = Asset::query()
+        // Soft-deleted assets are excluded by the model's SoftDeletes: a
+        // technician must never attach a disposed asset to a signed job.
+        $matches = Asset::query()
             ->with(['project:id,name,organization_id', 'category:id,name,code', 'brand:id,name', 'location:id,name', 'vendor:id,name'])
             ->where('serial_number', $serial)
-            ->orderByDesc('id')
-            ->first();
+            ->orderBy('id')
+            ->limit(25)
+            ->get();
 
-        if (!$asset) {
-            return $this->notFound('No asset with that serial number.');
+        if ($matches->isEmpty()) {
+            return response()->json([
+                'success'     => false,
+                'message'     => 'No asset with that serial number.',
+                'serial'      => $serial,
+                'match_count' => 0,
+                'ambiguous'   => false,
+                'data'        => [],
+            ], 404);
         }
 
-        return $this->item($this->transform($asset));
+        return response()->json([
+            'success'     => true,
+            'serial'      => $serial,
+            'match_count' => $matches->count(),
+            'ambiguous'   => $matches->count() > 1,
+            'data'        => $matches->map(fn (Asset $a) => $this->transform($a))->values()->all(),
+            'server_time' => now()->toIso8601String(),
+        ]);
     }
 
     private function transform(Asset $a): array
