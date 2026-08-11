@@ -45,6 +45,12 @@
                         </div>
                     </div>
                     <div>
+                        <label class="block text-gray-500 mb-1" style="font-size: 11px; font-family: Poppins, sans-serif;">Contract / Reference No.</label>
+                        <div class="px-3 py-2 bg-gray-50 border border-gray-200 rounded" style="min-height: 32px;">
+                            <span class="text-xs text-gray-900" style="font-size: 11px; font-family: Poppins, sans-serif; font-weight: 600;">{{ $project->contract_reference ?? '-' }}</span>
+                        </div>
+                    </div>
+                    <div>
                         <label class="block text-gray-500 mb-1" style="font-size: 11px; font-family: Poppins, sans-serif;">Description</label>
                         <div class="px-3 py-2 bg-gray-50 border border-gray-200 rounded" style="min-height: 64px;">
                             <span class="text-xs text-gray-900" style="font-size: 11px; font-family: Poppins, sans-serif;">{{ $project->description ?? '-' }}</span>

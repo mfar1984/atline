@@ -38,6 +38,9 @@ class ProjectController extends Controller
             $search = $request->search;
             $query->where(function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
+                  // A customer ringing in quotes the contract reference, not the
+                  // project name, so it has to be searchable.
+                  ->orWhere('contract_reference', 'like', "%{$search}%")
                   ->orWhereHas('organization', function($q) use ($search) {
                       $q->where('name', 'like', "%{$search}%");
                   });
@@ -99,6 +102,7 @@ class ProjectController extends Controller
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'organization_id' => 'nullable|exists:organizations,id',
+            'contract_reference' => 'nullable|string|max:120',
             'project_value' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
@@ -115,6 +119,7 @@ class ProjectController extends Controller
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
             'organization_id' => $validated['organization_id'] ?? null,
+            'contract_reference' => $validated['contract_reference'] ?? null,
             'project_value' => $validated['project_value'] ?? null,
             'start_date' => $validated['start_date'] ?? null,
             'end_date' => $validated['end_date'] ?? null,
@@ -220,6 +225,7 @@ class ProjectController extends Controller
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'organization_id' => 'nullable|exists:organizations,id',
+            'contract_reference' => 'nullable|string|max:120',
             'project_value' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
@@ -232,12 +238,15 @@ class ProjectController extends Controller
             'user_ids.*' => 'exists:users,id',
         ]);
 
-        $oldValues = $project->only(['name', 'description', 'status', 'project_value']);
-        
+        // Contract reference is tracked so a change to the number a customer
+        // knows the engagement by is visible in the activity log.
+        $oldValues = $project->only(['name', 'description', 'status', 'project_value', 'contract_reference']);
+
         $project->update([
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
             'organization_id' => $validated['organization_id'] ?? null,
+            'contract_reference' => $validated['contract_reference'] ?? null,
             'project_value' => $validated['project_value'] ?? null,
             'start_date' => $validated['start_date'] ?? null,
             'end_date' => $validated['end_date'] ?? null,

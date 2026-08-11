@@ -14,6 +14,7 @@ class Project extends Model
         'name',
         'description',
         'organization_id',
+        'contract_reference',
         'client_id',
         'client_name', // Keep for backward compatibility
         'project_value',

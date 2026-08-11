@@ -60,6 +60,20 @@
                             </select>
                         </div>
                         <div>
+                            <label class="block text-gray-700 mb-1" style="font-size: 11px; font-family: Poppins, sans-serif;">Contract / Reference No.</label>
+                            <input type="text" name="contract_reference"
+                                   class="w-full px-3 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                                   style="font-family: Poppins, sans-serif; min-height: 32px; font-size: 11px;"
+                                   value="{{ old('contract_reference') }}"
+                                   placeholder="e.g. QT240000000024647">
+                            <p class="text-gray-500 mt-1" style="font-size: 10px; font-family: Poppins, sans-serif;">
+                                Printed on every preventive-maintenance service form for this project.
+                            </p>
+                            @error('contract_reference')
+                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div>
                             <label class="block text-gray-700 mb-1" style="font-size: 11px; font-family: Poppins, sans-serif;">Description</label>
                             <textarea name="description" rows="4" 
                                       class="w-full px-3 py-2 border border-gray-300 rounded text-xs focus:outline-none focus:border-blue-500" 

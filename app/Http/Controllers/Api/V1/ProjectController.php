@@ -81,6 +81,10 @@ class ProjectController extends BaseApiController
             // Legacy free-text customer, kept so older projects still resolve.
             'client_name' => $p->client_name,
 
+            // The number the customer knows the engagement by. Printed on every
+            // preventive-maintenance service form, so the consumer mirrors it.
+            'contract_reference' => $p->contract_reference,
+
             'start_date' => $this->date($p->start_date),
             'end_date'   => $this->date($p->end_date),
 
