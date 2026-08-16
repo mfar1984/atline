@@ -213,10 +213,19 @@ class ExternalSettingsController extends Controller
             'district' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:100',
             'country' => 'nullable|string|max:100',
+            // Site coordinates: the geofence anchor used by the field app.
+            // Range-checked because a transposed pair (lat/lng swapped) is the
+            // most common way these get entered wrongly, and a latitude of 101
+            // is impossible.
+            'latitude' => 'nullable|numeric|between:-90,90|required_with:longitude',
+            'longitude' => 'nullable|numeric|between:-180,180|required_with:latitude',
             'website' => 'nullable|url|max:255',
             'phone' => 'nullable|string|max:50',
             'email' => 'nullable|email|max:255',
             'contact_person' => 'nullable|string|max:255',
+        ], [
+            'latitude.required_with' => 'Enter both coordinates, or neither — a longitude on its own cannot locate a site.',
+            'longitude.required_with' => 'Enter both coordinates, or neither — a latitude on its own cannot locate a site.',
         ]);
 
         $validated['is_active'] = true;
@@ -243,13 +252,23 @@ class ExternalSettingsController extends Controller
             'district' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:100',
             'country' => 'nullable|string|max:100',
+            'latitude' => 'nullable|numeric|between:-90,90|required_with:longitude',
+            'longitude' => 'nullable|numeric|between:-180,180|required_with:latitude',
             'website' => 'nullable|url|max:255',
             'phone' => 'nullable|string|max:50',
             'email' => 'nullable|email|max:255',
             'contact_person' => 'nullable|string|max:255',
+        ], [
+            'latitude.required_with' => 'Enter both coordinates, or neither — a longitude on its own cannot locate a site.',
+            'longitude.required_with' => 'Enter both coordinates, or neither — a latitude on its own cannot locate a site.',
         ]);
 
-        $oldValues = $organization->only(['name', 'organization_type', 'state', 'is_active']);
+        // Coordinates are in the audit trail because moving a site's pin changes
+        // which signatures count as on site. A silent change here would make an
+        // old geofence decision impossible to explain.
+        $oldValues = $organization->only([
+            'name', 'organization_type', 'state', 'is_active', 'latitude', 'longitude',
+        ]);
         $organization->update($validated);
 
         try {

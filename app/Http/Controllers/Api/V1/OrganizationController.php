@@ -74,6 +74,13 @@ class OrganizationController extends BaseApiController
             'state'     => $o->state,
             'country'   => $o->country,
 
+            // Geofence anchor for the field app. Sent as numbers so a consumer
+            // does not have to parse the decimal cast's string form, and null
+            // when unset rather than 0 — 0,0 is a real place in the Atlantic and
+            // would put every technician thousands of kilometres off site.
+            'latitude'  => $o->latitude === null ? null : (float) $o->latitude,
+            'longitude' => $o->longitude === null ? null : (float) $o->longitude,
+
             'phone'          => $o->phone,
             'email'          => $o->email,
             'website'        => $o->website,

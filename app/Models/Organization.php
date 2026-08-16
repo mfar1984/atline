@@ -20,6 +20,8 @@ class Organization extends Model
         'district',
         'state',
         'country',
+        'latitude',
+        'longitude',
         'website',
         'phone',
         'email',
@@ -29,7 +31,24 @@ class Organization extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        // Cast as strings, not floats: these travel to the field app and are used
+        // in a distance calculation that decides whether a signature is allowed.
+        // Letting PHP turn them into floats would reintroduce the rounding the
+        // DECIMAL column exists to avoid.
+        'latitude' => 'decimal:7',
+        'longitude' => 'decimal:7',
     ];
+
+    /**
+     * Can this organization anchor a geofence?
+     *
+     * Both coordinates are needed — a latitude with no longitude is not half a
+     * position, it is unusable.
+     */
+    public function hasCoordinates(): bool
+    {
+        return $this->latitude !== null && $this->longitude !== null;
+    }
 
     /**
      * Get all projects for this organization
