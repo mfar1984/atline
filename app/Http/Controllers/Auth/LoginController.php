@@ -41,6 +41,36 @@ class LoginController extends Controller
             ])->onlyInput('email');
         }
         
+        /*
+         * Registration approval, checked BEFORE is_active.
+         *
+         * Order matters. A pending registrant also has is_active = false, so
+         * without these two branches they would be told "your account has been
+         * deactivated" — describing a state the account has never been in, and
+         * sending them to chase an administrator about the wrong problem.
+         *
+         * Both run before the password is verified, matching how the lockout and
+         * is_active gates already behave. That does mean the message confirms the
+         * email is registered, but so does every other branch above, and telling
+         * an applicant "still waiting" only after they type the right password
+         * would be worse.
+         */
+        if ($user->isPendingApproval()) {
+            return back()->withErrors([
+                'email' => 'Your registration is still waiting for approval. You will be able to sign in once an administrator has approved it.',
+            ])->onlyInput('email');
+        }
+
+        if ($user->isRejected()) {
+            $reason = trim((string) $user->rejection_reason);
+
+            return back()->withErrors([
+                'email' => $reason !== ''
+                    ? "Your registration was not approved: {$reason}"
+                    : 'Your registration was not approved. Please contact the administrator.',
+            ])->onlyInput('email');
+        }
+
         // Check if user is active
         if (!$user->is_active) {
             return back()->withErrors([

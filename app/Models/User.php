@@ -31,7 +31,30 @@ class User extends Authenticatable
         'two_factor_secret',
         'two_factor_recovery_codes',
         'two_factor_confirmed_at',
+        'approval_status',
+        'approved_at',
+        'approved_by',
+        'rejection_reason',
     ];
+
+    /** Self-registered, waiting for an administrator to decide. */
+    public const APPROVAL_PENDING = 'pending';
+
+    public const APPROVAL_APPROVED = 'approved';
+
+    public const APPROVAL_REJECTED = 'rejected';
+
+    /**
+     * The role name allowed to approve client registrations.
+     *
+     * Kept as one constant used by one method (canApproveRegistrations) because
+     * this is a check on a role NAME, which is brittle: renaming the role in
+     * Settings → Group Roles would silently remove the ability to approve, with no
+     * error anywhere. The application already does this in three other places
+     * (User::isClientUser, CheckPermission, TicketNotificationService), so the
+     * pattern is consistent — but it is worth only having to change it here.
+     */
+    public const APPROVER_ROLE = 'Administrator';
 
     /**
      * Get the role that the user belongs to
@@ -213,6 +236,41 @@ class User extends Authenticatable
             'locked_until' => 'datetime',
             'last_failed_login' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
+            'approved_at' => 'datetime',
         ];
+    }
+
+    /* ── Registration approval ───────────────────────────────────────────── */
+
+    public function isPendingApproval(): bool
+    {
+        return $this->approval_status === self::APPROVAL_PENDING;
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->approval_status === self::APPROVAL_REJECTED;
+    }
+
+    /**
+     * May this user approve or reject client registrations?
+     *
+     * Administrator role only, as specified. The single place this is decided —
+     * see the APPROVER_ROLE note above for why that matters.
+     */
+    public function canApproveRegistrations(): bool
+    {
+        return $this->role && $this->role->name === self::APPROVER_ROLE;
+    }
+
+    /** The administrator who decided on this account, if anyone has. */
+    public function approver()
+    {
+        return $this->belongsTo(self::class, 'approved_by');
+    }
+
+    public function scopePendingApproval($query)
+    {
+        return $query->where('approval_status', self::APPROVAL_PENDING);
     }
 }

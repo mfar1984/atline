@@ -15,6 +15,7 @@ use App\Models\Vendor;
 use App\Services\ActivityLogService;
 use App\Traits\ProjectAccess;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class ExternalSettingsController extends Controller
@@ -81,6 +82,13 @@ class ExternalSettingsController extends Controller
             'clients' => [
                 'clients' => $this->getClients($search, $status, $perPage),
                 'roles' => Role::active()->orderBy('name')->get(),
+                // Drives the "N waiting for approval" banner. Counted separately
+                // from the paginated list so the number is the real total rather
+                // than however many happen to be on the current page.
+                'pendingCount' => Client::whereHas('user', fn ($q) => $q->pendingApproval())->count(),
+                // Pre-selected in the approve dialog. Null when the role row is
+                // missing, in which case the administrator must pick one.
+                'defaultClientRoleId' => Role::where('name', 'Client')->value('id'),
             ],
             'vendors' => ['vendors' => $this->getVendors($search, $status, $perPage)],
             'locations' => ['locations' => $this->getLocations($search, $status, $perPage), 'allLocations' => Location::orderBy('name')->get()],
@@ -124,10 +132,145 @@ class ExternalSettingsController extends Controller
         }
         
         if ($status !== null && $status !== '') {
-            $query->where('is_active', $status === 'active');
+            // 'pending' is a state of the linked USER, not of the client row, so it
+            // cannot be folded into the is_active filter. Without this option a
+            // self-registration is only findable by scrolling: it looks identical
+            // to a deactivated client under "Inactive".
+            if ($status === 'pending') {
+                $query->whereHas('user', fn ($q) => $q->pendingApproval());
+            } else {
+                $query->where('is_active', $status === 'active');
+            }
         }
         
-        return $query->orderBy('name')->paginate($perPage)->withQueryString();
+        /*
+         * Waiting-for-approval first.
+         *
+         * A pending registration is the only row on this screen that somebody is
+         * waiting on, and alphabetical order buries it. MySQL sorts 0 before 1, so
+         * ordering by the negated flag puts pending at the top without needing a
+         * CASE expression.
+         */
+        return $query
+            ->orderByRaw("(SELECT u.approval_status <> 'pending' FROM users u WHERE u.id = clients.user_id) ASC")
+            ->orderBy('name')
+            ->paginate($perPage)
+            ->withQueryString();
+    }
+
+    /* ── Registration approval ───────────────────────────────────────────── */
+
+    /**
+     * Gate for both decisions.
+     *
+     * Administrator role only, as specified — deliberately NOT the
+     * external_settings_client.update permission that governs editing a client.
+     * Approving a registration creates a login to this system; editing a client
+     * changes an address. Those should not be the same authority.
+     */
+    private function authoriseApproval(): void
+    {
+        if (! auth()->user()->canApproveRegistrations()) {
+            abort(403, 'Only an Administrator can approve or reject client registrations.');
+        }
+    }
+
+    /** The pending user behind a client row, or null when there is nothing to decide. */
+    private function pendingUserFor(Client $client): ?User
+    {
+        $user = $client->user;
+
+        return $user && $user->isPendingApproval() ? $user : null;
+    }
+
+    public function approveClient(Request $request, Client $client)
+    {
+        $this->authoriseApproval();
+
+        $validated = $request->validate([
+            'role_id' => 'required|exists:roles,id',
+        ], [
+            'role_id.required' => 'Choose the role this client should have.',
+        ]);
+
+        $user = $this->pendingUserFor($client);
+        if (! $user) {
+            return redirect()->route('external.settings.index', ['tab' => 'clients'])
+                ->with('error', 'That registration is no longer waiting for approval.');
+        }
+
+        // Both rows, together. A user activated without its client row activated
+        // would sign in to a client that still reads as inactive everywhere else.
+        DB::transaction(function () use ($user, $client, $validated) {
+            $user->update([
+                'role_id' => $validated['role_id'],
+                'is_active' => true,
+                'approval_status' => User::APPROVAL_APPROVED,
+                'approved_at' => now(),
+                'approved_by' => auth()->id(),
+                'rejection_reason' => null,
+            ]);
+
+            $client->update(['is_active' => true]);
+        });
+
+        try {
+            ActivityLogService::logUpdate(
+                $client,
+                'external_settings_client',
+                "Approved client registration: {$client->name} ({$user->email})"
+            );
+        } catch (\Exception $e) {
+            \Log::error('Activity logging failed: '.$e->getMessage());
+        }
+
+        return redirect()->route('external.settings.index', ['tab' => 'clients'])
+            ->with('success', "{$client->name} approved. They can now sign in.");
+    }
+
+    public function rejectClient(Request $request, Client $client)
+    {
+        $this->authoriseApproval();
+
+        $validated = $request->validate([
+            'rejection_reason' => 'nullable|string|max:500',
+        ]);
+
+        $user = $this->pendingUserFor($client);
+        if (! $user) {
+            return redirect()->route('external.settings.index', ['tab' => 'clients'])
+                ->with('error', 'That registration is no longer waiting for approval.');
+        }
+
+        /*
+         * Marked rejected, not deleted.
+         *
+         * Deleting would free the email address for immediate re-registration,
+         * which turns a rejection into a speed bump. It would also destroy the
+         * only record of what was applied for. The client row is left in place and
+         * inactive so an administrator can still look at it, and can delete it
+         * through the normal recycle-bin route if they want it gone.
+         */
+        $user->update([
+            'approval_status' => User::APPROVAL_REJECTED,
+            'is_active' => false,
+            'approved_at' => now(),
+            'approved_by' => auth()->id(),
+            'rejection_reason' => $validated['rejection_reason'] ?? null,
+        ]);
+
+        try {
+            ActivityLogService::logUpdate(
+                $client,
+                'external_settings_client',
+                "Rejected client registration: {$client->name} ({$user->email})"
+            );
+        } catch (\Exception $e) {
+            \Log::error('Activity logging failed: '.$e->getMessage());
+        }
+
+        return redirect()->route('external.settings.index', ['tab' => 'clients'])
+            ->with('success', "{$client->name} was not approved.");
     }
 
     private function getVendors($search, $status, $perPage)

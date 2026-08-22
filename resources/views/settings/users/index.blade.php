@@ -110,9 +110,30 @@
                     @endif
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-center">
-                    <span class="inline-flex px-2 py-1 text-xs font-medium rounded {{ $user->is_active ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600' }}" style="font-size: 10px;">
-                        {{ $user->is_active ? 'Active' : 'Inactive' }}
-                    </span>
+                    {{-- A self-registration is also is_active = false, so without
+                         this it would be indistinguishable from an employee an
+                         administrator switched off.
+
+                         Read-only here. The decision is made under External >
+                         Settings > Clients, where the company name, address and
+                         phone the applicant submitted are actually visible — this
+                         screen shows none of that, and approving without reading it
+                         is not a decision. One action, one place. --}}
+                    @if($user->isPendingApproval())
+                        <span class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-amber-100 text-amber-700" style="font-size: 10px;" title="Approve under External > Settings > Clients">
+                            <span class="material-symbols-outlined" style="font-size: 11px;">schedule</span>
+                            Pending
+                        </span>
+                    @elseif($user->isRejected())
+                        <span class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-700" style="font-size: 10px;">
+                            <span class="material-symbols-outlined" style="font-size: 11px;">block</span>
+                            Rejected
+                        </span>
+                    @else
+                        <span class="inline-flex px-2 py-1 text-xs font-medium rounded {{ $user->is_active ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600' }}" style="font-size: 10px;">
+                            {{ $user->is_active ? 'Active' : 'Inactive' }}
+                        </span>
+                    @endif
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-center">
                     <span class="text-xs text-gray-500" style="font-family: Poppins, sans-serif;">

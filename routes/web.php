@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\External\ProjectController;
@@ -23,6 +24,17 @@ Route::middleware('guest')->group(function () {
     // Login attempt - stricter rate limit (5 attempts/min per IP)
     Route::post('login', [LoginController::class, 'login'])
         ->middleware('throttle:login-attempt');
+
+    // Client self-registration. Creates a pending users row plus an inactive
+    // clients row; an Administrator approves it under External > Settings >
+    // Clients. Throttled harder than the login page because a registration
+    // writes two rows, so an unthrottled endpoint is a way to fill the database.
+    Route::get('register', [RegisterController::class, 'showRegistrationForm'])
+        ->name('register')
+        ->middleware('throttle:login-page');
+
+    Route::post('register', [RegisterController::class, 'register'])
+        ->middleware('throttle:register-attempt');
     
     // 2FA Challenge (accessible without full auth)
     Route::get('2fa/challenge', [TwoFactorController::class, 'showChallenge'])->name('2fa.challenge')->withoutMiddleware('guest');
@@ -138,6 +150,13 @@ Route::middleware('auth')->group(function () {
         Route::post('settings/clients', [ExternalSettingsController::class, 'storeClient'])->name('settings.clients.store');
         Route::put('settings/clients/{client}', [ExternalSettingsController::class, 'updateClient'])->name('settings.clients.update');
         Route::delete('settings/clients/{client}', [ExternalSettingsController::class, 'destroyClient'])->name('settings.clients.destroy');
+
+        // Self-registration approval. The permission middleware on this group
+        // still applies, but the Administrator-only rule is enforced inside the
+        // controller — approving a registration creates a login to this system,
+        // which is a different authority from editing a client's address.
+        Route::post('settings/clients/{client}/approve', [ExternalSettingsController::class, 'approveClient'])->name('settings.clients.approve');
+        Route::post('settings/clients/{client}/reject', [ExternalSettingsController::class, 'rejectClient'])->name('settings.clients.reject');
         
         // Vendors
         Route::post('settings/vendors', [ExternalSettingsController::class, 'storeVendor'])->name('settings.vendors.store');

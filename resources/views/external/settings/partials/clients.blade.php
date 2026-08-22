@@ -27,6 +27,9 @@
                 <option value="">All Status</option>
                 <option value="active" {{ request('status') == 'active' ? 'selected' : '' }}>Active</option>
                 <option value="inactive" {{ request('status') == 'inactive' ? 'selected' : '' }}>Inactive</option>
+                {{-- Filters on the linked user's approval_status, not on
+                     clients.is_active — see getClients(). --}}
+                <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending approval</option>
             </select>
             <button type="submit" class="inline-flex items-center gap-2 px-3 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition" style="min-height: 32px;">
                 <span class="material-symbols-outlined" style="font-size: 14px;">search</span>
@@ -313,6 +316,31 @@
         </div>
     </div>
 
+    {{-- Only when there is something waiting, and only counted across the whole
+         table rather than the current page. --}}
+    @if(($pendingCount ?? 0) > 0)
+    <div class="mb-4 px-4 py-3 rounded border border-amber-200 bg-amber-50 flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-amber-600" style="font-size: 18px;">schedule</span>
+            <p class="text-xs text-amber-900 m-0" style="font-family: Poppins, sans-serif;">
+                <strong>{{ $pendingCount }}</strong>
+                {{ $pendingCount === 1 ? 'registration is' : 'registrations are' }} waiting for approval.
+                @unless(auth()->user()->canApproveRegistrations())
+                    Only an Administrator can approve them.
+                @endunless
+            </p>
+        </div>
+        @if(request('status') !== 'pending')
+        <a href="{{ route('external.settings.index', ['tab' => 'clients', 'status' => 'pending']) }}"
+           class="inline-flex items-center gap-1 px-3 text-amber-900 rounded transition"
+           style="min-height: 28px; font-size: 11px; font-weight: 600; background-color: #fde68a; text-decoration: none; font-family: Poppins, sans-serif;">
+            <span class="material-symbols-outlined" style="font-size: 14px;">filter_alt</span>
+            SHOW ONLY THESE
+        </a>
+        @endif
+    </div>
+    @endif
+
     <!-- Table -->
     <div class="overflow-x-auto border border-gray-200 rounded">
         <table class="min-w-full divide-y divide-gray-200">
@@ -330,7 +358,15 @@
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
                 @forelse($clients as $client)
-                <tr class="{{ !$client->is_active ? 'opacity-50' : '' }}">
+                @php
+                    $pending  = $client->user && $client->user->isPendingApproval();
+                    $rejected = $client->user && $client->user->isRejected();
+                    $canApprove = auth()->user()->canApproveRegistrations();
+                @endphp
+                {{-- A pending row keeps full opacity. The dimming is meant to say
+                     "switched off, ignore me", which is the opposite of what a row
+                     awaiting a decision needs to say. --}}
+                <tr class="{{ !$client->is_active && !$pending ? 'opacity-50' : '' }} {{ $pending ? 'bg-amber-50' : '' }}">
                     <td class="px-4 py-3 text-xs text-gray-900" style="font-family: Poppins, sans-serif;">{{ $client->name }}</td>
                     <td class="px-4 py-3 text-xs text-gray-600" style="font-family: Poppins, sans-serif;">
                         @if($client->organization_type)
@@ -353,11 +389,57 @@
                     </td>
                     <td class="px-4 py-3 text-xs text-gray-600" style="font-family: Poppins, sans-serif;">{{ $client->created_at?->format('d/m/Y') ?? '-' }}</td>
                     <td class="px-4 py-3 text-center">
-                        <span class="status-badge inline-flex px-2 py-1 text-xs font-medium rounded {{ $client->is_active ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600' }}" style="font-size: 10px;">
-                            {{ $client->is_active ? 'Active' : 'Inactive' }}
-                        </span>
+                        {{-- Three states, not two. A self-registration is inactive
+                             AND waiting on somebody, which "Inactive" alone does not
+                             say — it reads identically to a client an administrator
+                             switched off on purpose. --}}
+                        @if($pending)
+                            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-amber-100 text-amber-700" style="font-size: 10px;">
+                                <span class="material-symbols-outlined" style="font-size: 11px;">schedule</span>
+                                Pending
+                            </span>
+                        @elseif($rejected)
+                            <span class="status-badge inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-700" style="font-size: 10px;">
+                                <span class="material-symbols-outlined" style="font-size: 11px;">block</span>
+                                Rejected
+                            </span>
+                        @else
+                            <span class="status-badge inline-flex px-2 py-1 text-xs font-medium rounded {{ $client->is_active ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600' }}" style="font-size: 10px;">
+                                {{ $client->is_active ? 'Active' : 'Inactive' }}
+                            </span>
+                        @endif
                     </td>
                     <td class="px-4 py-3 text-center">
+                        {{-- Approve and Reject sit in front of the dropdown, not
+                             inside it. They are the only reason this row is at the
+                             top of the list, and burying a decision somebody is
+                             waiting on behind a menu costs an extra tap for the one
+                             action that matters. --}}
+                        @if($pending && $canApprove)
+                        <div class="inline-flex items-center gap-1 mr-1 align-middle">
+                            <button type="button"
+                                    onclick="openApprove({{ $client->id }}, {{ Illuminate\Support\Js::from($client->name) }}, {{ Illuminate\Support\Js::from($client->user?->email ?? '') }})"
+                                    class="inline-flex items-center gap-1 px-2 text-white rounded transition"
+                                    style="min-height: 26px; font-size: 10px; font-weight: 600; background-color: #16a34a; font-family: Poppins, sans-serif;"
+                                    onmouseover="this.style.backgroundColor='#15803d'" onmouseout="this.style.backgroundColor='#16a34a'">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                APPROVE
+                            </button>
+                            <button type="button"
+                                    onclick="openReject({{ $client->id }}, {{ Illuminate\Support\Js::from($client->name) }})"
+                                    class="inline-flex items-center gap-1 px-2 text-white rounded transition"
+                                    style="min-height: 26px; font-size: 10px; font-weight: 600; background-color: #dc2626; font-family: Poppins, sans-serif;"
+                                    onmouseover="this.style.backgroundColor='#b91c1c'" onmouseout="this.style.backgroundColor='#dc2626'">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">close</span>
+                                REJECT
+                            </button>
+                        </div>
+                        @elseif($pending)
+                            {{-- Visible to non-administrators so the row still
+                                 explains itself, rather than looking like a client
+                                 that is simply switched off for no reason. --}}
+                            <span class="text-gray-400 mr-1 align-middle" style="font-size: 10px; font-family: Poppins, sans-serif;">Administrator only</span>
+                        @endif
                         <x-ui.action-buttons
                             :edit-onclick="auth()->user()->hasPermission('external_settings_client.update') ? 'editClient(' . $client->id . ', ' . json_encode([
                                 'name' => $client->name,
@@ -400,3 +482,147 @@
         <x-ui.custom-pagination :paginator="$clients" record-label="clients" />
     </div>
 </div>
+
+{{--
+    Approval dialogs.
+
+    Outside the Alpine root above on purpose: that component's state is the
+    add/edit wizard, and reusing it would mean a half-filled client form could be
+    open behind an approval decision. Plain DOM here, driven by the two functions
+    pushed at the bottom of the settings index.
+
+    Rendered only for an Administrator. A dialog nobody can submit is a dialog that
+    should not exist.
+--}}
+@if(auth()->user()->canApproveRegistrations())
+<div id="approve-modal" class="fixed inset-0 hidden items-center justify-center" style="background-color: rgba(0,0,0,0.5); z-index: 9999;">
+    <div style="background-color:#fff; border-radius:12px; width:100%; max-width:420px; margin:16px; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,.25);">
+        <div style="padding:16px 20px; border-bottom:1px solid #e5e7eb; background:#f0fdf4; display:flex; align-items:center; gap:10px;">
+            <div style="width:36px; height:36px; border-radius:8px; background:#16a34a; display:flex; align-items:center; justify-content:center;">
+                <span class="material-symbols-outlined" style="font-size:20px; color:#fff;">how_to_reg</span>
+            </div>
+            <h3 style="font-size:14px; font-weight:600; color:#111827; margin:0; font-family:Poppins,sans-serif;">Approve registration</h3>
+        </div>
+
+        <form id="approve-form" method="POST">
+            @csrf
+            <div style="padding:20px;">
+                <p style="font-size:12px; color:#374151; margin:0 0 4px; font-family:Poppins,sans-serif;" id="approve-name"></p>
+                <p style="font-size:11px; color:#6b7280; margin:0 0 16px; font-family:Poppins,sans-serif;" id="approve-email"></p>
+
+                <label style="display:block; font-size:11px; font-weight:500; color:#374151; margin-bottom:6px; font-family:Poppins,sans-serif;">
+                    Role <span style="color:#ef4444;">*</span>
+                </label>
+                <select name="role_id" required
+                        style="width:100%; padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; font-family:Poppins,sans-serif; font-size:12px; color:#1f2937; outline:none;">
+                    <option value="">Select role</option>
+                    @foreach($roles as $role)
+                        {{-- Pre-selected to Client when that row exists. The
+                             administrator still chooses, matching the Add Client
+                             wizard, so a registrant can never influence their own
+                             permissions. --}}
+                        <option value="{{ $role->id }}" @selected(($defaultClientRoleId ?? null) === $role->id)>{{ $role->name }}</option>
+                    @endforeach
+                </select>
+                <p style="font-size:10.5px; color:#6b7280; margin:6px 0 0; font-family:Poppins,sans-serif;">
+                    Approving activates the login and the client record. Project access is separate —
+                    add them to a project afterwards.
+                </p>
+            </div>
+            <div style="padding:14px 20px; border-top:1px solid #e5e7eb; background:#f9fafb; display:flex; justify-content:flex-end; gap:8px;">
+                <button type="button" onclick="closeApprove()"
+                        style="padding:8px 16px; font-size:12px; color:#374151; background:#fff; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; font-family:Poppins,sans-serif;">
+                    Cancel
+                </button>
+                <button type="submit"
+                        style="padding:8px 16px; font-size:12px; font-weight:500; color:#fff; background:#16a34a; border:none; border-radius:6px; cursor:pointer; font-family:Poppins,sans-serif;">
+                    Approve
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="reject-modal" class="fixed inset-0 hidden items-center justify-center" style="background-color: rgba(0,0,0,0.5); z-index: 9999;">
+    <div style="background-color:#fff; border-radius:12px; width:100%; max-width:420px; margin:16px; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,.25);">
+        <div style="padding:16px 20px; border-bottom:1px solid #e5e7eb; background:#fef2f2; display:flex; align-items:center; gap:10px;">
+            <div style="width:36px; height:36px; border-radius:8px; background:#dc2626; display:flex; align-items:center; justify-content:center;">
+                <span class="material-symbols-outlined" style="font-size:20px; color:#fff;">block</span>
+            </div>
+            <h3 style="font-size:14px; font-weight:600; color:#111827; margin:0; font-family:Poppins,sans-serif;">Reject registration</h3>
+        </div>
+
+        <form id="reject-form" method="POST">
+            @csrf
+            <div style="padding:20px;">
+                <p style="font-size:12px; color:#374151; margin:0 0 16px; font-family:Poppins,sans-serif;" id="reject-name"></p>
+
+                <label style="display:block; font-size:11px; font-weight:500; color:#374151; margin-bottom:6px; font-family:Poppins,sans-serif;">
+                    Reason (optional)
+                </label>
+                <textarea name="rejection_reason" rows="3" maxlength="500"
+                          placeholder="Shown to the applicant if they try to sign in."
+                          style="width:100%; padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; font-family:Poppins,sans-serif; font-size:12px; color:#1f2937; outline:none; resize:vertical;"></textarea>
+                <p style="font-size:10.5px; color:#6b7280; margin:6px 0 0; font-family:Poppins,sans-serif;">
+                    The account is kept and marked rejected, not deleted — so the email cannot be
+                    used to register again straight away, and the record of the application survives.
+                </p>
+            </div>
+            <div style="padding:14px 20px; border-top:1px solid #e5e7eb; background:#f9fafb; display:flex; justify-content:flex-end; gap:8px;">
+                <button type="button" onclick="closeReject()"
+                        style="padding:8px 16px; font-size:12px; color:#374151; background:#fff; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; font-family:Poppins,sans-serif;">
+                    Cancel
+                </button>
+                <button type="submit"
+                        style="padding:8px 16px; font-size:12px; font-weight:500; color:#fff; background:#dc2626; border:none; border-radius:6px; cursor:pointer; font-family:Poppins,sans-serif;">
+                    Reject
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+// Built from a template rather than a data attribute so the client id cannot be
+// tampered with in the DOM ahead of submitting.
+const APPROVE_URL = @json(route('external.settings.clients.approve', ['client' => '__ID__']));
+const REJECT_URL  = @json(route('external.settings.clients.reject',  ['client' => '__ID__']));
+
+function openApprove(id, name, email) {
+    document.getElementById('approve-form').action = APPROVE_URL.replace('__ID__', id);
+    document.getElementById('approve-name').textContent = name;
+    document.getElementById('approve-email').textContent = email || 'No login email on record';
+    const m = document.getElementById('approve-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+
+function closeApprove() {
+    const m = document.getElementById('approve-modal');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+function openReject(id, name) {
+    document.getElementById('reject-form').action = REJECT_URL.replace('__ID__', id);
+    document.getElementById('reject-name').textContent = 'Reject the registration from ' + name + '?';
+    const m = document.getElementById('reject-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+
+function closeReject() {
+    const m = document.getElementById('reject-modal');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+// Escape closes whichever is open. A modal that can only be dismissed by its own
+// Cancel button is a trap when the page behind it scrolled.
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeApprove(); closeReject(); }
+});
+</script>
+@endpush
+@endif

@@ -79,6 +79,7 @@ class AppServiceProvider extends ServiceProvider
             RateLimiter::for('login-page', fn() => Limit::perMinute(1000));
             RateLimiter::for('login-attempt', fn() => Limit::perMinute(1000));
             RateLimiter::for('guest-protection', fn() => Limit::perMinute(1000));
+            RateLimiter::for('register-attempt', fn() => Limit::perMinute(1000));
             return;
         }
         
@@ -111,6 +112,37 @@ class AppServiceProvider extends ServiceProvider
                 });
         });
         
+        /*
+         * Client self-registration.
+         *
+         * Per HOUR, not per minute, and deliberately the tightest limiter here. A
+         * registration writes a users row AND a clients row, so unlike a failed
+         * login it leaves something behind on every request — an unthrottled
+         * endpoint would be a way to fill the database and bury the real
+         * applications in the approval queue.
+         *
+         * Not configurable from the settings screen: the other three limits are
+         * about locking people out of an account they own, which an administrator
+         * may legitimately want to relax. This one protects the database.
+         */
+        RateLimiter::for('register-attempt', function (Request $request) {
+            if (\App\Models\BannedIp::isBanned($request->ip())) {
+                return response()->view('errors.429', [
+                    'message' => 'IP anda telah dilarang akses ke sistem ini. Sila hubungi pentadbir.',
+                    'retryAfter' => 3600,
+                ], 429);
+            }
+
+            return Limit::perHour(5)
+                ->by($request->ip())
+                ->response(function (Request $request, array $headers) {
+                    return response()->view('errors.429', [
+                        'message' => 'Terlalu banyak pendaftaran dari IP ini. Sila cuba lagi kemudian.',
+                        'retryAfter' => $headers['Retry-After'] ?? 3600,
+                    ], 429, $headers);
+                });
+        });
+
         // Login attempt rate limiter - lebih ketat untuk POST login
         RateLimiter::for('login-attempt', function (Request $request) use ($loginAttemptLimit) {
             // Check if IP is banned

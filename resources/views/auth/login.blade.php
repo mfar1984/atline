@@ -241,6 +241,48 @@
             font-size: 0.6875rem;
             margin-bottom: 1.25rem;
         }
+
+        /* Shown once, after a registration is submitted. Green rather than the
+           red .error-message shape, because nothing has gone wrong. */
+        .register-success {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+            padding: 0.75rem 1rem;
+            border-radius: 0.375rem;
+            font-size: 0.6875rem;
+            line-height: 1.5;
+            margin-bottom: 1.25rem;
+        }
+
+        .register-success .material-symbols-outlined {
+            font-size: 1rem;
+            flex: 0 0 auto;
+            color: #16a34a;
+        }
+
+        .register-prompt {
+            margin-top: 1.25rem;
+            padding: 0.7rem 0.85rem;
+            border: 1px dashed #d1d5db;
+            border-radius: 0.375rem;
+            background: #f9fafb;
+            color: #6b7280;
+            font-size: 0.6875rem;
+            text-align: center;
+        }
+
+        .register-prompt a {
+            color: #2563eb;
+            font-weight: 600;
+            text-decoration: none;
+            margin-left: 0.15rem;
+        }
+
+        .register-prompt a:hover { text-decoration: underline; }
         
         .login-footer {
             text-align: center;
@@ -681,6 +723,19 @@
                 <img src="{{ \App\Models\SystemSetting::logoPath() }}" alt="Logo" class="login-logo">
             </div>
             
+            {{-- Set by RegisterController after a successful submission. Shown here
+                 rather than on the form because the applicant is redirected away
+                 from it, and "what happens next" is the one thing they need. --}}
+            @if(session('registered'))
+            <div class="register-success">
+                <span class="material-symbols-outlined">mark_email_read</span>
+                <div>
+                    <strong>Registration received.</strong>
+                    An administrator will review it. You will be able to sign in once it is approved.
+                </div>
+            </div>
+            @endif
+
             @if($errors->any())
             <div class="error-message">
                 {{ $errors->first() }}
@@ -722,6 +777,11 @@
                 </button>
             </form>
             
+            <div class="register-prompt">
+                Are you a client without an account?
+                <a href="{{ route('register') }}">Register here</a>
+            </div>
+
             <div class="login-footer">
                 <p>© {{ date('Y') }} {{ \App\Models\SystemSetting::companyName() }}. All rights reserved.</p>
                 <div class="legal-links">
